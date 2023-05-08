@@ -23,18 +23,20 @@ def categorical_sample(prob_n, np_random):
     Discrete Environment class. It presents the following attributes:
     - nS: number of states
     - nA: number of actions
-    - P: transitions as a disctionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
+    - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
     - isd: initial state distribution as list or array of length nS
+    - gamma: discount factor
     - lastaction: used for rendering
     - action_space: action space of the environment
     - observation_space: observation space of the environment
 """
 class DiscreteEnv(Env):
-    def __init__(self, nS, nA, P, isd) -> None:
+    def __init__(self, nS, nA, P, isd, gamma) -> None:
         self.P = P
         self.isd = isd
         self.nS = nS
         self.nA = nA
+        self.gamma = gamma
 
         self.lastaction=None
 
@@ -47,7 +49,7 @@ class DiscreteEnv(Env):
     """
         Set a seed for reproducibility of results
     """
-    def _seed(self, seed=None):
+    def seed(self, seed=None):
         # set a random generator
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -55,7 +57,7 @@ class DiscreteEnv(Env):
     """
         Reset the environment to an initial state
     """
-    def _reset(self):
+    def reset(self):
         # Get an initial state, from inistial state distribution
         s = categorical_sample(self.isd, self.np_random)
         self.lastaction = None
@@ -68,7 +70,7 @@ class DiscreteEnv(Env):
             @a: the action to be executed
             return next state, the immediate reward, a done flag and the probability of that specific transition
     """
-    def _step(self, a):
+    def step(self, a):
         """
             Get the probability transition associated to state s and action a. 
             P[s][a][0] is a vector of length nS, telling the probability of moving from state s, to each other state s' in S, picking action a
