@@ -1,14 +1,6 @@
 import numpy as np
 
 """
-    A river swim environment is an environment in which there are several sequential states and
-    only two possible moves, left and right. It is assumed that left move is in the same direction of the river
-    flow, hence it always lead to the immediatly left state, whereas the right move is done against the flow, 
-    meaning that it has a very small probability of leading to the left, a pretty high probability of remaining 
-    in the same state and a small probability of moving to the right. The right you are able to move, the higher
-    will be rewards.
-"""
-"""
     Generate a river
         @n: number of states
         @small: small reward
