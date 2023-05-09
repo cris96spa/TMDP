@@ -1,6 +1,6 @@
 import numpy as np
 
-from .discreteEnv import DiscreteEnv
+from discreteEnv import DiscreteEnv
 
 """
     A Teleport-MDP is a Markovia decision process that follows (1 - tau) times the model dynamics,

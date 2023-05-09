@@ -1,6 +1,6 @@
 import numpy as np
 
-from discrete import DiscreteEnv
+from discreteEnv import DiscreteEnv
 from river_swim_generator import generate_river
 
 """
@@ -25,21 +25,26 @@ class River(DiscreteEnv):
         P = {s: {a :[] for a in range(nA)} for s in range(nS)}
         # Probability matrix of the problem dynamics
         P_mat = np.zeros(shape=(nS*nA, nS))
+        print(P_mat)
 
         # Assigning values to P and P_mat
         for s in range(nS):
+            print("state: ", s,"\n")
             for a in range(nA):
+                print('\t action: ', a, "\n")
                 for s1 in range(nS):
                     # Get the probability of moving from s->s1, when action a is picked
                     prob = p[s][a][s1]
                     # Get the reward associated to the transition from s->s1, when a is picked
                     reward = r[s][a][s1]
+                    print('\t\tState: ', s1, "prob:", prob, " reward: ",reward, "\n")
                     # Build P[s][a] that is a list of tuples, containint the probability of that move, the next state, the associated reward and a done flag
                     P[s][a].append((prob, s1, reward, False))
 
                     # Assign P_mat values
-                    P_mat[s*a + a][s1] = prob
+                    P_mat[s*nA + a][s1] = prob
 
+        print(P_mat)
         self.P_mat = P_mat
 
         # Calling the superclass constructor to initialize other parameters

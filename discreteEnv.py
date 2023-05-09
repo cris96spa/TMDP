@@ -17,7 +17,7 @@ def categorical_sample(prob_n, np_random):
     # Compute cumulative sum of the probability vector
     csprob_n = np.cumsum(prob_n)
     print(csprob_n)
-    return (csprob_n > np_random.rand()).argmax()
+    return (csprob_n > np_random.random()).argmax()
 
 """
     Discrete Environment class. It presents the following attributes:
@@ -43,8 +43,8 @@ class DiscreteEnv(Env):
         self.action_space = spaces.Discrete(self.nA)
         self.observation_space = spaces.Discrete(self.nS)
 
-        self._seed()
-        self._reset()
+        self.seed()
+        self.reset()
     
     """
         Set a seed for reproducibility of results
@@ -52,6 +52,7 @@ class DiscreteEnv(Env):
     def seed(self, seed=None):
         # set a random generator
         self.np_random, seed = seeding.np_random(seed)
+
         return [seed]
 
     """
