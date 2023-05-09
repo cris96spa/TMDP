@@ -15,23 +15,24 @@ from .discreteEnv import DiscreteEnv
 """
 class TMDP(DiscreteEnv):
 
-    def __init__(self, nS, nA, P, isd, gamma, tau, xi) -> None:
-        super().__init__(nS, nA, P, isd, gamma)
+    def __init__(self, env:DiscreteEnv,  xi, tau=0, gamma=1):
         self.tau = tau
         self.xi = xi
 
-        P = {s: {a: [] for a in range(nA)} for s in range(nS)}
-        P_mat = np.zeros(shape=(nS * nA, nS))
-        P_mat_tau = np.zeros(shape=(nS * nA, nS))
+        # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
+        super(TMDP, self).__init__(gamma)
 
-        for s in range(nS):
-            for a in range(nA):
-                for s1 in range(nS):
-                    prob = p[s][a][s1]
-                    reward = r[s][a][s]
-                    P[s][a].append((prob, s1, reward, False))
-                    P_mat[s * nA + a][s1] = prob
-                    P_mat_tau[s * nA + a][s1] = prob * (1-tau) + xi[s1]*tau
+        P_tau = {s: {a: [] for a in range(self.nA)} for s in range(nS)}
+        P_mat_tau = np.zeros(shape=(self.nS * self.nA, self.nS))
 
-        self.P_mat = P_mat
+        for s in range(self.nS):
+            for a in range(self.nA):
+                for s1 in range(self.nS):
+                    prob = self.P[s][a][s1]
+                    prob_tau = prob * (1-tau) + xi[s1]*tau
+                    reward = self.reward[s][a][s1]
+                    P_tau[s][a].append((prob_tau, s1, reward, False))
+                    P_mat_tau[s * self.nA + a][s1] = prob_tau
+
+        self.P_tau = P_tau
         self.P_mat_tau = P_mat_tau
