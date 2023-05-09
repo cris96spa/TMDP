@@ -24,16 +24,16 @@ def categorical_sample(prob_n, np_random):
     - nS: number of states
     - nA: number of actions
     - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
-    - isd: initial state distribution as list or array of length nS
+    - mu: initial state distribution as list or array of length nS
     - gamma: discount factor
     - lastaction: used for rendering
     - action_space: action space of the environment
     - observation_space: observation space of the environment
 """
 class DiscreteEnv(Env):
-    def __init__(self, nS, nA, P, isd, gamma=1) -> None:
+    def __init__(self, nS, nA, P, mu, gamma=1) -> None:
         self.P = P
-        self.isd = isd
+        self.mu = mu
         self.nS = nS
         self.nA = nA
         self.gamma = gamma
@@ -60,7 +60,7 @@ class DiscreteEnv(Env):
     """
     def reset(self):
         # Get an initial state, from inistial state distribution
-        s = categorical_sample(self.isd, self.np_random)
+        s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
         # Set the initial state
         self.s = np.array([s]).ravel()

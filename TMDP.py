@@ -18,21 +18,26 @@ class TMDP(DiscreteEnv):
     def __init__(self, env:DiscreteEnv,  xi, tau=0, gamma=1):
         self.tau = tau
         self.xi = xi
+        self.reward = env.reward
+        self.P_mat = env.P_mat
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
-        super(TMDP, self).__init__(gamma)
+        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma)
+        if tau == 0:
+            P_tau = self.P
+            P_mat_tau = self.P_mat
+        else:
+            P_tau = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
+            P_mat_tau = np.zeros(shape=(self.nS * self.nA, self.nS))
 
-        P_tau = {s: {a: [] for a in range(self.nA)} for s in range(nS)}
-        P_mat_tau = np.zeros(shape=(self.nS * self.nA, self.nS))
-
-        for s in range(self.nS):
-            for a in range(self.nA):
-                for s1 in range(self.nS):
-                    prob = self.P[s][a][s1]
-                    prob_tau = prob * (1-tau) + xi[s1]*tau
-                    reward = self.reward[s][a][s1]
-                    P_tau[s][a].append((prob_tau, s1, reward, False))
-                    P_mat_tau[s * self.nA + a][s1] = prob_tau
+            for s in range(self.nS):
+                for a in range(self.nA):
+                    for s1 in range(self.nS):
+                        prob = self.P[s][a][s1][0]
+                        prob_tau = prob * (1-tau) + xi[s1]*tau
+                        reward = self.reward[s][a][s1]
+                        P_tau[s][a].append((prob_tau, s1, reward, False))
+                        P_mat_tau[s * self.nA + a][s1] = prob_tau
 
         self.P_tau = P_tau
         self.P_mat_tau = P_mat_tau
