@@ -20,6 +20,7 @@ class TMDP(DiscreteEnv):
         self.xi = xi
         self.reward = env.reward
         self.P_mat = env.P_mat
+        self.allowed_actions = env.allowed_actions
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
         super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma)

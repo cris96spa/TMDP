@@ -17,6 +17,7 @@ def eps_greedy(s, Q, eps, allowed_actions):
         actions = actions[0]
         # pick a uniformly random action
         a = np.random.choice(actions, p=(np.ones(len(actions))/len(actions)))
+        #print("Random action picked: ",a)
     else:
         # Extract the Q function for the given state
         Q_s = Q[s, :].copy()
@@ -25,6 +26,7 @@ def eps_greedy(s, Q, eps, allowed_actions):
         Q_s[allowed_actions == 0] = -np.inf
         # Pick the most promizing action (exploitation)
         a = np.argmax(Q_s)
+        #print("Greedy action picked: ",a)
     return a
 
 """
@@ -41,20 +43,18 @@ def SARSA(env:Env, s, a, Q, M=5000):
     # SARSA main loop
     while m < M:
         # Learning rate initialization
-        alpha = (1- 1/M)
+        alpha = (1- m/M)
         # epsilon update
-        eps = (1 - 1/M)**2
+        eps = (1 - m/M)**2
 
         # Perform a step in the environment, picking action a
         s_prime, r, d, p = env.step(a)
 
         # Policy improvement step
         # N.B. allowed action is not present in the Env object, must be managed
-        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime])
-
+        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
         # Evaluation step
-        Q[s,a] = Q[s,a] + alpha*(r*env.gamma*Q[s_prime, a_prime] - Q[s,a])
-
+        Q[s,a] = Q[s,a] + alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
         # Setting next iteration
         m = m+1
         s = s_prime
@@ -75,20 +75,19 @@ def Q_learning(env:Env, s, a, Q, M=5000):
     # SARSA main loop
     while m < M:
         # Learning rate initialization
-        alpha = (1- 1/M)
+        alpha = (1- m/M)
         # epsilon update
-        eps = (1 - 1/M)**2
-
+        eps = (1 - m/M)**2
         # Perform a step in the environment, picking action a
         s_prime, r, d, p = env.step(a)
 
         # Policy improvement step
         # N.B. allowed action is not present in the Env object, must be managed
-        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime])
+        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
 
+        #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
         # Evaluation step
-        Q[s,a] = Q[s,a] + alpha*(r*env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
-
+        Q[s,a] = Q[s,a] + alpha*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
         # Setting next iteration
         m = m+1
         s = s_prime

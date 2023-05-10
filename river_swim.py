@@ -25,9 +25,11 @@ class River(DiscreteEnv):
         P = {s: {a :[] for a in range(nA)} for s in range(nS)}
         # Probability matrix of the problem dynamics
         P_mat = np.zeros(shape=(nS*nA, nS))
+        self.allowed_actions = []
 
         # Assigning values to P and P_mat
         for s in range(nS):
+            self.allowed_actions.append([1,1])
             for a in range(nA):
                 for s1 in range(nS):
                     # Get the probability of moving from s->s1, when action a is picked
@@ -42,6 +44,5 @@ class River(DiscreteEnv):
                     P_mat[s*nA + a][s1] = prob
                     
         self.P_mat = P_mat
-
         # Calling the superclass constructor to initialize other parameters
         super(River, self).__init__(nS, nA, P, mu, gamma)

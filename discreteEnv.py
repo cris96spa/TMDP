@@ -16,7 +16,6 @@ def categorical_sample(prob_n, np_random):
     prob_n = np.asarray(prob_n)
     # Compute cumulative sum of the probability vector
     csprob_n = np.cumsum(prob_n)
-    print(csprob_n)
     return (csprob_n > np_random.random()).argmax()
 
 """
@@ -77,10 +76,9 @@ class DiscreteEnv(Env):
             P[s][a][0] is a vector of length nS, telling the probability of moving from state s, to each other state s' in S, picking action a
             
         """
-        transitions = self.P[np.asscalar(self.s)][np.asscalar(a)]
+        transitions = self.P[self.s[0]][a]
         sample = categorical_sample([t[0] for t in transitions], self.np_random)
         p, s, r, d = transitions[sample]
-        
         # update the current state
         self.s = np.array([s]).ravel()
         # update last action
