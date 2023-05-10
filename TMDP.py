@@ -24,6 +24,7 @@ class TMDP(DiscreteEnv):
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
         super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma)
+        
         if tau == 0:
             P_tau = self.P
             P_mat_tau = self.P_mat
@@ -42,3 +43,25 @@ class TMDP(DiscreteEnv):
 
         self.P_tau = P_tau
         self.P_mat_tau = P_mat_tau
+
+    # Sistemare impementazione
+    def step(self, a):
+        
+        # if <tau:
+            #uniform distribution
+        #else:
+            # super().step(a)
+            
+        transitions = self.P[self.s[0]][a]
+        sample = categorical_sample([t[0] for t in transitions], self.np_random)
+        p, s, r, d = transitions[sample]
+        # update the current state
+        self.s = np.array([s]).ravel()
+        # update last action
+        self.lastaction = a
+        return self.s, r, d, {"prob":p}
+
+
+
+
+# TBD tenere traccia del teleporting 
