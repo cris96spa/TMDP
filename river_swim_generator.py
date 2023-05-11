@@ -54,7 +54,7 @@ def compute_probabilities(nS, nA):
 """
 def compute_rewards(nS, nA, small, large):
     # initialize all rewards to 0
-    r = np.zeros((nS, nA, nS)) +1
+    r = np.zeros((nS, nA, nS))
     
     # set to small the reward associated to the left action on the leftmost state, when remaining there
     r[0, 0, 0] = small

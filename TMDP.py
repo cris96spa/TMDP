@@ -46,22 +46,18 @@ class TMDP(DiscreteEnv):
 
     # Sistemare impementazione
     def step(self, a):
-        
-        # if <tau:
-            #uniform distribution
-        #else:
-            # super().step(a)
-            
-        transitions = self.P[self.s[0]][a]
-        sample = categorical_sample([t[0] for t in transitions], self.np_random)
-        p, s, r, d = transitions[sample]
-        # update the current state
-        self.s = np.array([s]).ravel()
-        # update last action
-        self.lastaction = a
-        return self.s, r, d, {"prob":p}
-
-
+        if np.random.rand() <= self.tau:
+            # Teleport branch
+            states = [i for i in range(self.nS)]
+            s_prime = np.random.choice(states, p=self.xi)
+            #print("Teleported from state {} to {}:".format(self.s, s_prime))
+            self.lastaction = a
+            r = self.reward[self.s, a, s_prime]
+            self.s = self.s = np.array([s_prime]).ravel()
+            return self.s, r, True, {"prob:", self.xi[s_prime]}
+        else:
+            #print("Following regular probability transition function")
+            return super(TMDP, self).step(a)
 
 
 # TBD tenere traccia del teleporting 

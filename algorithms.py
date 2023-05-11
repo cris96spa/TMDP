@@ -93,3 +93,10 @@ def Q_learning(env:Env, s, a, Q, M=5000):
         s = s_prime
         a = a_prime
     return Q
+
+"""
+    Extract the policy from a given state action value function
+"""
+def get_policy(Q):
+    pi = [np.argmax(row) for row in Q]
+    return pi
