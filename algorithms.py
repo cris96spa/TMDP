@@ -1,5 +1,6 @@
 import numpy as np
 from gym import Env
+from distanceMeasure import *
 
 """
     Epsilon greedy action selection
@@ -96,7 +97,27 @@ def Q_learning(env:Env, s, a, Q, M=5000):
 
 """
     Extract the policy from a given state action value function
+        @Q: the state action value function
+        return the greedy policy according to Q
 """
 def get_policy(Q):
     pi = [np.argmax(row) for row in Q]
     return pi
+
+"""
+    Compare two different policies in terms of a distance measure
+        @measure: the measure to be used for the comparison
+        @pi: a policy row vector
+        @pi_prime: a second policy row vector
+        return the difference, according to the given measure, of the two policies
+"""
+def compare_policies(measure:DistanceMeasure, pi, pi_prime):
+    return measure.compute_distance(pi, pi_prime)
+
+"""
+    Compute the difference among state action value functions
+        @q: a state action value function in the form [|S|*|A| x |S|]
+        @q_prime: another state action value function in the form [|S|*|A| x |S|]
+"""
+def compute_delta_q(q, q_prime):
+    return q - q_prime
