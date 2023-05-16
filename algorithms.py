@@ -120,7 +120,7 @@ def compare_policies(measure:DistanceMeasure, pi, pi_prime):
         @q_prime: another state action value function in the form [|S|*|A| x |S|]
 """
 def compute_delta_q(q, q_prime):
-    return q - q_prime
+    return np.max(np.abs(q - q_prime))
 
 def compute_r_s_a(nS, nA, P_mat, reward):
     # Average reward when taking action a in state s, of size |S|x|A|
@@ -134,10 +134,12 @@ def compute_r_s_a(nS, nA, P_mat, reward):
             r_s_a[s, a] = avg_rew
     return r_s_a
 
-def bellman_optimal_q(nS, nA, P_mat, reward, iterations, gamma):
+def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
     Q = np.zeros((nS, nA))
-    for i in range(iterations):
+    loop = True
+    while loop:
+        Q_old = Q.copy()
         for s in range(nS):
             for a in range(nA):
                 sum = 0
@@ -145,5 +147,8 @@ def bellman_optimal_q(nS, nA, P_mat, reward, iterations, gamma):
                 for s_prime in range(nS):
                     a_star = np.argmax(Q[s_prime])
                     sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
-                Q[s, a] = r_s_a[s, a] + gamma*sum
+                Q[s,a] = r_s_a[s, a] + gamma*sum
+        delta_q = np.linalg.norm(np.abs(Q - Q_old), np.inf)
+        if delta_q <= epsilon:
+            loop = False
     return Q
