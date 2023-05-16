@@ -121,3 +121,29 @@ def compare_policies(measure:DistanceMeasure, pi, pi_prime):
 """
 def compute_delta_q(q, q_prime):
     return q - q_prime
+
+def compute_r_s_a(nS, nA, P_mat, reward):
+    # Average reward when taking action a in state s, of size |S|x|A|
+    r_s_a =np.zeros(shape=(nS, nA))
+    for s in range(nS):
+        for a in range(nA):
+            avg_rew = 0
+            for s_prime in range(nS):
+                avg_rew = avg_rew + P_mat[s*nA + a][s_prime] * reward[s, a, s_prime]
+            #print("Updating state {}, action {}, with {}".format(s, a, avg_rew))
+            r_s_a[s, a] = avg_rew
+    return r_s_a
+
+def bellman_optimal_q(nS, nA, P_mat, reward, iterations, gamma):
+    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
+    Q = np.zeros((nS, nA))
+    for i in range(iterations):
+        for s in range(nS):
+            for a in range(nA):
+                sum = 0
+                a_star = 0
+                for s_prime in range(nS):
+                    a_star = np.argmax(Q[s_prime])
+                    sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
+                Q[s, a] = r_s_a[s, a] + gamma*sum
+    return Q

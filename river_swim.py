@@ -14,10 +14,10 @@ from river_swim_generator import generate_river
 
 class River(DiscreteEnv):
 
-    def __init__(self, gamma=1):
+    def __init__(self, nS, gamma=1, small=5, large=10000):
 
         # Generate river parameters using the auxiliary function    
-        nS, nA, p, r, mu = generate_river()
+        nS, nA, p, r, mu = generate_river(nS, small, large)
 
         # Parameter initialization
         self.reward = r
