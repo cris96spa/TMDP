@@ -3,6 +3,97 @@ from gym import Env
 from distanceMeasure import *
 
 """
+    Compute the average reward when picking action a in state s
+    @nS: number of states
+    @nA: number of actions
+    @P_mat: probability transition function
+    @reward: the reward function
+    return:the average reward when picking action a in state s as a nS x nA matrix
+"""
+def compute_r_s_a(nS, nA, P_mat, reward):
+    # Average reward when taking action a in state s, of size |S|x|A|
+    r_s_a =np.zeros(shape=(nS, nA))
+    for s in range(nS):
+        for a in range(nA):
+            avg_rew = 0
+            for s_prime in range(nS):
+                avg_rew = avg_rew + P_mat[s*nA + a][s_prime] * reward[s, a, s_prime]
+            #print("Updating state {}, action {}, with {}".format(s, a, avg_rew))
+            r_s_a[s, a] = avg_rew
+    return r_s_a
+
+"""
+    Compute the probability of moving from state s to state sprime, under policy pi
+        @nS: number of states
+        @nA: number of actions
+        @P_mat: probability transition function
+        @pi: the given policy
+        return: the probability of moving from state s to state sprime under policy pi, as a [nS x nS] matrix 
+"""
+def compute_p_sprime_s(nS, nA, P_mat, pi):
+    P_sprime_s = np.zeros((nS, nS))
+    for s in range(nS):
+        for s_prime in range(nS):
+            P_sprime_s[s][s_prime] = P_mat[s*nA + pi[s]][s_prime]
+    return P_sprime_s
+
+"""
+    Compute the discounted state distribution
+   
+"""
+def compute_d(mu, nS, nA, P_mat, pi, gamma):
+    I = np.eye(nS)
+    P_sprime_s = compute_p_sprime_s(nS, nA, P_mat, pi)
+    inv = np.linalg.inv(I - gamma*P_sprime_s)
+    print(inv)
+    print(mu)
+    d = np.matmul((1-gamma)*mu, inv)
+    return d
+
+
+def compute_j(nS, r_s_a, pi, d, gamma):
+    J = 0
+    for s in range(nS):
+        J = J + r_s_a[s, pi[s]]*d[s]
+    J = J/(1-gamma)
+    return J
+
+def get_expected_avg_reward(nS, nA, P_mat, pi, reward, gamma, mu):
+    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
+    d = compute_d(mu, nS, nA, P_mat, pi, gamma)
+    print(d)
+    return compute_j(nS, r_s_a, pi, d, gamma)
+
+"""
+    Compute Q* using bellman optimality operator iteratively
+    @nS: number of states
+    @nA: number of actions
+    @P_mat: probability transition function
+    @reward: reward function
+    @epsilon: stopping threshold value
+    @gamma: discount factor
+    return: Q* estimated as an iterative application of the bellman optimality operator until |T*(Q)-Q|<=epsilon
+"""
+def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
+    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
+    Q = np.zeros((nS, nA))
+    loop = True
+    while loop:
+        Q_old = Q.copy()
+        for s in range(nS):
+            for a in range(nA):
+                sum = 0
+                a_star = 0
+                for s_prime in range(nS):
+                    a_star = np.argmax(Q[s_prime])
+                    sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
+                Q[s,a] = r_s_a[s, a] + gamma*sum
+        delta_q = np.linalg.norm(Q - Q_old, np.inf)
+        if delta_q <= epsilon:
+            loop = False
+    return Q
+
+"""
     Epsilon greedy action selection
         @s: current state
         @Q: current state action value function
@@ -114,41 +205,3 @@ def get_policy(Q):
 def compare_policies(measure:DistanceMeasure, pi, pi_prime):
     return measure.compute_distance(pi, pi_prime)
 
-"""
-    Compute the difference among state action value functions
-        @q: a state action value function in the form [|S|*|A| x |S|]
-        @q_prime: another state action value function in the form [|S|*|A| x |S|]
-"""
-def compute_delta_q(q, q_prime):
-    return np.max(np.abs(q - q_prime))
-
-def compute_r_s_a(nS, nA, P_mat, reward):
-    # Average reward when taking action a in state s, of size |S|x|A|
-    r_s_a =np.zeros(shape=(nS, nA))
-    for s in range(nS):
-        for a in range(nA):
-            avg_rew = 0
-            for s_prime in range(nS):
-                avg_rew = avg_rew + P_mat[s*nA + a][s_prime] * reward[s, a, s_prime]
-            #print("Updating state {}, action {}, with {}".format(s, a, avg_rew))
-            r_s_a[s, a] = avg_rew
-    return r_s_a
-
-def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
-    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
-    Q = np.zeros((nS, nA))
-    loop = True
-    while loop:
-        Q_old = Q.copy()
-        for s in range(nS):
-            for a in range(nA):
-                sum = 0
-                a_star = 0
-                for s_prime in range(nS):
-                    a_star = np.argmax(Q[s_prime])
-                    sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
-                Q[s,a] = r_s_a[s, a] + gamma*sum
-        delta_q = np.linalg.norm(np.abs(Q - Q_old), np.inf)
-        if delta_q <= epsilon:
-            loop = False
-    return Q
