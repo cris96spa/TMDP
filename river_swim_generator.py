@@ -70,7 +70,6 @@ def compute_rewards(nS, nA, small, large):
         return the initial state probability vector
 """
 def compute_mu(nS):
-    mu = np.zeros(nS)/nS
+    mu = np.ones(nS)/nS
     # Starting from the leftmost state
-    mu[0] = 1
     return mu

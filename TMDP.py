@@ -53,7 +53,7 @@ class TMDP(DiscreteEnv):
             #print("Teleported from state {} to {}:".format(self.s, s_prime))
             self.lastaction = a
             r = self.reward[self.s, a, s_prime]
-            self.s = self.s = np.array([s_prime]).ravel()
+            self.s = np.array([s_prime]).ravel()
             return self.s, r, True, {"prob:", self.xi[s_prime]}
         else:
             #print("Following regular probability transition function")

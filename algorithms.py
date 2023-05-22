@@ -1,6 +1,8 @@
 import numpy as np
 from gym import Env
 from distanceMeasure import *
+from scipy.special import softmax
+np.set_printoptions(precision=3)
 
 """
     Compute the average reward when picking action a in state s
@@ -37,6 +39,8 @@ def compute_p_sprime_s(nS, nA, P_mat, pi):
             P_sprime_s[s][s_prime] = P_mat[s*nA + pi[s]][s_prime]
     return P_sprime_s
 
+#P(s'|s) = sum_{a \in A}{pi(a|s)*P(s'|s,a)}
+
 """
     Compute the discounted state distribution
    
@@ -45,8 +49,6 @@ def compute_d(mu, nS, nA, P_mat, pi, gamma):
     I = np.eye(nS)
     P_sprime_s = compute_p_sprime_s(nS, nA, P_mat, pi)
     inv = np.linalg.inv(I - gamma*P_sprime_s)
-    print(inv)
-    print(mu)
     d = np.matmul((1-gamma)*mu, inv)
     return d
 
@@ -61,7 +63,6 @@ def compute_j(nS, r_s_a, pi, d, gamma):
 def get_expected_avg_reward(nS, nA, P_mat, pi, reward, gamma, mu):
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
     d = compute_d(mu, nS, nA, P_mat, pi, gamma)
-    print(d)
     return compute_j(nS, r_s_a, pi, d, gamma)
 
 """
@@ -191,9 +192,17 @@ def Q_learning(env:Env, s, a, Q, M=5000):
         @Q: the state action value function
         return the greedy policy according to Q
 """
-def get_policy(Q):
-    pi = [np.argmax(row) for row in Q]
+def get_policy(Q, det=True):
+    if det:
+        pi = [np.argmax(row) for row in Q]
+    else:
+        pi = np.zeros(Q.shape)
+        for x in range(Q.shape[0]):
+           pi[x] = softmax(Q[x]) 
+
     return pi
+
+
 
 """
     Compare two different policies in terms of a distance measure
