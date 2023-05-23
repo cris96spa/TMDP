@@ -203,6 +203,11 @@ def get_policy(Q, det=True):
     return pi
 
 
+def get_value_function(Q):
+    V = np.zeros(Q.shape[0])
+    for i in range(Q.shape[0]):
+        V[i] = np.max(Q[i])
+    return V
 
 """
     Compare two different policies in terms of a distance measure
