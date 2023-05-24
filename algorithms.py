@@ -26,13 +26,13 @@ def compute_r_s_a(nS, nA, P_mat, reward):
 
 """
     Compute the probability of moving from state s to state sprime, under policy pi
-        @nS: number of states
-        @nA: number of actions
         @P_mat: probability transition function
         @pi: the given policy
         return: the probability of moving from state s to state sprime under policy pi, as a [nS x nS] matrix 
 """
-def compute_p_sprime_s(nS, nA, P_mat, pi):
+def compute_p_sprime_s(P_mat, pi):
+    nS = pi.shape[0]
+    nA = pi.shape[1]
     P_sprime_s = np.zeros((nS, nS))
     for s in range(nS):
         for a in range(nA):
@@ -44,16 +44,16 @@ def compute_p_sprime_s(nS, nA, P_mat, pi):
 """
     Compute the discounted state distribution
         @mu: initial state distribution
-        @nS: number of states
-        @nA: number of actions
         @P_mat: probability transition function
         @pi: the given policy
         @gamma: discount factor
         return: the discount state distribution as a vector of |S| elements
 """
-def compute_d(mu, nS, nA, P_mat, pi, gamma):
+def compute_d(mu, P_mat, pi, gamma):
+    nS = pi.shape[0]
+    nA = pi.shape[1]
     I = np.eye(nS)
-    P_sprime_s = compute_p_sprime_s(nS, nA, P_mat, pi)
+    P_sprime_s = compute_p_sprime_s(P_mat, pi)
     inv = np.linalg.inv(I - gamma*P_sprime_s)
     d = np.matmul((1-gamma)*mu, inv)
     return d
@@ -82,23 +82,25 @@ def get_policy(Q, det=True):
         @Q: the state action value function
         return the value function as V(s) = max{a in A}{Q(s,a)}
 """
-def get_value_function(Q):
+def get_value_function(Q, det=True):
+    pi = get_policy(Q, det)
     V = np.zeros(Q.shape[0])
-    for i in range(Q.shape[0]):
-        V[i] = np.max(Q[i])
+    for s in range(Q.shape[0]):
+        for a in range(Q.shape[1]):
+            V[s] = V[s] + Q[s,a]*pi[s,a]
     return V
 
 
 """
     Compute the expected discounted sum of returns
-        @nS: number of states
-        @nA: number of actions
         @r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
         @pi: the given policy
         @gamma: discount factor
         return: the expected discounted sum of returns as a scalar value
 """
-def compute_j(nS, nA, r_s_a, pi, d, gamma):
+def compute_j(r_s_a, pi, d, gamma):
+    nS = pi.shape[0]
+    nA = pi.shape[1]
     J = 0
     for s in range(nS):
         for a in range(nA):
@@ -108,50 +110,77 @@ def compute_j(nS, nA, r_s_a, pi, d, gamma):
 
 """
     Utility function to get the expected discounted sum of returns
-        @nS: number of states
-        @nA: number of actions
         @P_mat: probability transition function
         @pi: the given policy
         @reward: the reward function
         @gamma: discount factor
         return: the expected discounted sum of returns as a scalar value
 """
-def get_expected_avg_reward(nS, nA, P_mat, pi, reward, gamma, mu):
+def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
+    nS = pi.shape[0]
+    nA = pi.shape[1]
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
-    d = compute_d(mu, nS, nA, P_mat, pi, gamma)
-    return compute_j(nS, nA, r_s_a, pi, d, gamma)
+    d = compute_d(mu, P_mat, pi, gamma)
+    return compute_j(r_s_a, pi, d, gamma)
 
 """
-    Compute the get the state action nextstate value function
+    Compute the state action nextstate value function
         @nS: number of states
         @nA: number of actions
         @r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
         @gamma: discount factor
         @V: the state value function
-        return: the state action nextstate value function
+        return: the state action nextstate value function as an |S|x|A|x|S| matrix
 """
 def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
     U = np.zeros((nS, nA, nS))
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                U[s, a, s_prime] = r_s_a(s, a) + gamma*V[s_prime]
+                U[s, a, s_prime] = r_s_a[s, a] + gamma*V[s_prime]
     return U
 
 """
     Utility function to get the state action nextstate value function
-        @nS: number of states
-        @nA: number of actions
         @P_mat: probability transition function
         @reward: the reward function
         @gamma: discount factor
         @Q: the state action value function
-        return: the state action nextstate value function
+        return: the state action nextstate value function as an |S|x|A|x|S| matrix
 """
-def get_state_action_nextstate_value_function(nS, nA, P_mat, reward, gamma, Q):
+def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True):
+    nS = Q.shape[0]
+    nA = Q.shape[1]
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
-    V = get_value_function(Q)
+    V = get_value_function(Q, det)
     return compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V)
+
+
+"""
+    Compute the state policy advantage function
+        @nS: number of states
+        @nA: number of actions
+        @Q: state action value function
+        @V: state value function
+        return: the policy advantage function as an |S|x|A| matrix
+"""
+def compute_policy_advantage_function(nS, nA, Q, V):
+    A = np.zeros(Q.shape)
+    for s in range(nS):
+        for a in range(nA):
+            A[s, a] = Q[s,a] - V[s]
+    return A
+
+"""
+    Utility function to get policy advantage function
+        @Q: the state action value function
+        @det: deterministic flag. Whether or not extracting a deterministic policy
+        return: the state policy advantage function as an |S|x|A| matrix
+"""
+def get_policy_advantage_function(Q, det):
+    nS, nA = Q.shape
+    V = get_value_function(Q, det)
+    return compute_policy_advantage_function(nS, nA, Q, V)
 
 """
     Compute Q* using bellman optimality operator iteratively
