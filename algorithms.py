@@ -101,11 +101,13 @@ def SARSA(env:Env, s, a, Q, M=5000):
         @a: first action to be taken
         @Q: current state-action value function
         @M: number of iterations to be considered
+        @status: intermediate results flag
         return the state action value function under the pseudo-optimal policy found
 """
-def Q_learning(env:Env, s, a, Q, M=5000):
+def Q_learning(env:Env, s, a, Q, M=5000, status_step=200):
     m = 1
     # SARSA main loop
+    J = []
     while m < M:
         # Learning rate initialization
         alpha = (1- m/M)
@@ -121,11 +123,13 @@ def Q_learning(env:Env, s, a, Q, M=5000):
         #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
         # Evaluation step
         Q[s,a] = Q[s,a] + alpha*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
+        if(m % status_step == 0):
+            J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
         # Setting next iteration
         m = m+1
         s = s_prime
         a = a_prime
-    return Q
+    return Q, J
 
 """
     Compare two different policies in terms of a distance measure

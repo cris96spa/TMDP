@@ -3,6 +3,7 @@ from gym import Env
 from scipy.special import softmax
 
 np.set_printoptions(precision=3)
+
 """
     Compute the average reward when picking action a in state s
     @nS: number of states
@@ -72,7 +73,7 @@ def get_policy(Q, det=True):
     else:
         for x in range(Q.shape[0]):
            pi[x] = softmax(Q[x]) 
-
+            # Provare normalizzando q sui valori di riga
     return pi
 
 
@@ -123,7 +124,7 @@ def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
     return compute_j(r_s_a, pi, d, gamma)
 
 """
-    Compute the state action nextstate value function U(s, a s')
+    Compute the state action nextstate value function U(s, a, s')
         @nS: number of states
         @nA: number of actions
         @r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
