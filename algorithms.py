@@ -134,6 +134,49 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, status_step=200):
     return Q, J, delta_q
 
 """
+    Q_learning algorithm implementation
+        @env: environment object
+        @s: current state
+        @a: first action to be taken
+        @Q: current state-action value function
+        @M: number of iterations to be considered
+        @status: intermediate results flag
+        return the state action value function under the pseudo-optimal policy found
+"""
+def batch_Q_learning(env:Env, s, a, Q, Q_star, batch_size, M=5000, status_step=200):
+    assert M % batch_size == 0
+    batch_Q = Q.copy()
+    m = 1
+    # SARSA main loop
+    J = []
+    delta_q = []
+    while m < M:
+        # Learning rate initialization
+        alpha = (1- m/M)
+        # epsilon update
+        eps = (1 - m/M)**2
+        # Perform a step in the environment, picking action a
+        s_prime, r, d, p = env.step(a)
+
+        # Policy improvement step
+        # N.B. allowed action is not present in the Env object, must be managed
+        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
+
+        #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
+        # Evaluation step
+        batch_Q[s,a] = batch_Q[s,a] + alpha*(r + env.gamma*np.max(batch_Q[s_prime, :]) - batch_Q[s,a])
+        if m % batch_size == 0:
+            Q[s,a] = Q[s,a] + alpha*(r + env.gamma*np.max(batch_Q[s_prime, :]) - Q[s,a])
+        if(m % status_step == 0):
+            J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
+            delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
+        # Setting next iteration
+        m = m+1
+        s = s_prime
+        a = a_prime
+    return Q, J, delta_q
+
+"""
     Compare two different policies in terms of a distance measure
         @measure: the measure to be used for the comparison
         @pi: a policy row vector

@@ -30,7 +30,7 @@ def categorical_sample(prob_n, np_random):
     - observation_space: observation space of the environment
 """
 class DiscreteEnv(Env):
-    def __init__(self, nS, nA, P, mu, gamma=1) -> None:
+    def __init__(self, nS, nA, P, mu, gamma=1, seed=None) -> None:
         self.P = P
         self.mu = mu
         self.nS = nS
@@ -42,7 +42,7 @@ class DiscreteEnv(Env):
         self.action_space = spaces.Discrete(self.nA)
         self.observation_space = spaces.Discrete(self.nS)
 
-        self.seed()
+        self.seed(seed)
         self.reset()
     
     """

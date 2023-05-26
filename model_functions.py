@@ -58,6 +58,19 @@ def compute_d(mu, P_mat, pi, gamma):
     d = np.matmul((1-gamma)*mu, inv)
     return d
 
+"""
+    Compute the discounted state action distribution under policy pi
+        @mu: initial state distribution
+        @pi: the given policy
+        return: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+"""
+def compute_delta(d, pi):
+    delta = np.zeros(pi.shape)
+    nS, nA = pi.shape
+    for s in range(nS):
+        for a in range(nA):
+            delta[s,a] = pi[s, a] * d[s]
+    return delta
 
 """
     Extract the policy from a given state action value function
@@ -269,3 +282,37 @@ def compute_relative_model_advantage_function(P_mat_prime, A):
 def get_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, det=True):
     A = get_model_advantage_function(P_mat, reward, gamma, Q, det)
     return compute_relative_model_advantage_function(P_mat_prime, A)
+
+"""
+    Compute the discounted distribution relative model advantage function A_tau_tau_prime
+        @A: the relative model advantage function as an |S|x|A| matrix
+        @delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+        return: the discounted distribution relative model advantage function as a scalar
+"""
+def compute_discounted_distribution_relative_model_advantage_function(A, delta):
+    expected_A = 0
+    nS, nA = delta.shape
+    for s in range(nS):
+        for a in range(nA):
+            expected_A = expected_A + A[s, a]* delta[s, a]
+    return expected_A
+
+"""
+    Compute the discounted distribution relative model advantage function hat A^_tau_tau_prime
+        @P_mat: probability transition function
+        @xi: state teleport probability distribution
+        @U: state action next state value function as an |S|x|A|x|S| matrix
+        @delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+        return: the discounted distribution relative model advantage function hat as a scalar
+"""
+def compute_discounted_distribution_relative_model_advantage_function_hat(P_mat, xi, U, delta):
+    expected_A = 0
+    nS, nA, _ = U.shape
+    for s in range(nS):
+        for a in range(nA):
+            sum_sprime = 0
+            for s_prime in range(nS):
+                sum_sprime = sum_sprime + (P_mat[s*nA + a, s_prime] - xi[s])* U[s, a, s_prime]
+            expected_A = expected_A + sum_sprime*delta[s, a]
+    return expected_A
+

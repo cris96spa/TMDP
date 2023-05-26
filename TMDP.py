@@ -15,7 +15,7 @@ from discreteEnv import DiscreteEnv
 """
 class TMDP(DiscreteEnv):
 
-    def __init__(self, env:DiscreteEnv,  xi, tau=0, gamma=1):
+    def __init__(self, env:DiscreteEnv,  xi, tau=0, gamma=1, seed=None):
         self.tau = tau
         self.xi = xi
         self.reward = env.reward
@@ -23,7 +23,7 @@ class TMDP(DiscreteEnv):
         self.allowed_actions = env.allowed_actions
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
-        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma)
+        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma, seed)
         
         if tau == 0:
             P_tau = self.P
