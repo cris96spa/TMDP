@@ -1,6 +1,6 @@
 import numpy as np
 
-from discreteEnv import DiscreteEnv
+from DiscreteEnv import DiscreteEnv
 
 """
     A Teleport-MDP is a Markovia decision process that follows (1 - tau) times the model dynamics,
@@ -45,7 +45,8 @@ class TMDP(DiscreteEnv):
         self.P_mat_tau = P_mat_tau
 
     # Sistemare impementazione
-    def step(self, a):
+    def step(self, a, seed=None):
+        np.random.seed(seed)
         if np.random.rand() <= self.tau:
             # Teleport branch
             states = [i for i in range(self.nS)]

@@ -1,6 +1,6 @@
 import numpy as np
 
-from discreteEnv import DiscreteEnv
+from DiscreteEnv import DiscreteEnv
 from river_swim_generator import generate_river
 
 """

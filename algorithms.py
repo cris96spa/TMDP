@@ -104,14 +104,18 @@ def SARSA(env:Env, s, a, Q, M=5000):
         @status: intermediate results flag
         return the state action value function under the pseudo-optimal policy found
 """
-def Q_learning(env:Env, s, a, Q, Q_star, M=5000, status_step=200):
+def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False):
     m = 1
-    # SARSA main loop
     J = []
     delta_q = []
+    dec_alpha = alpha
+    # Q_learning main loop
     while m < M:
         # Learning rate initialization
-        alpha = (1- m/M)
+        
+        if debug:
+            dec_alpha = alpha*(1- m/M)
+        
         # epsilon update
         eps = (1 - m/M)**2
         # Perform a step in the environment, picking action a
@@ -127,6 +131,7 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, status_step=200):
         if(m % status_step == 0):
             J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
             delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
+            print(dec_alpha)
         # Setting next iteration
         m = m+1
         s = s_prime
