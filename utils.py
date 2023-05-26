@@ -45,7 +45,7 @@ def parse_results(results):
             if isinstance(res[key], list):
                 res[key] = np.asarray(res[key])
 
-def aggregate_results(results, different_count):
+def aggregate_results(results, different_count, z=1.96):
     res = []
     for i, r in enumerate(results):
         if i < different_count:
@@ -58,5 +58,9 @@ def aggregate_results(results, different_count):
 
         for r in res:
             r['avg_J'] = np.mean(r['J'])
+            r['std_J'] = np.std(r['J'])
+            r['ci_J'] = z * r['std_J']/np.sqrt(len(r['J']))
             r['avg_delta_q'] = np.mean(r['delta_q'])
+            r['std_delta_q'] = np.std(r['delta_q'])
+            r['ci_delta_q'] = z * r['std_delta_q']/np.sqrt(len(r['J']))
     return res

@@ -72,7 +72,9 @@ def get_policy(Q, det=True):
             pi[x,np.argmax(Q[x])] = 1
     else:
         for x in range(Q.shape[0]):
-           pi[x] = softmax(Q[x]) 
+            #pi[x] = softmax(Q[x]) 
+            pi[x] = Q[x]/np.sum(Q[x]) 
+           
             # Provare normalizzando q sui valori di riga
     return pi
 
