@@ -50,8 +50,7 @@ def compute_p_sprime_s(P_mat, pi):
         return: the discount state distribution as a vector of |S| elements
 """
 def compute_d(mu, P_mat, pi, gamma):
-    nS = pi.shape[0]
-    nA = pi.shape[1]
+    nS, nA = pi.shape
     I = np.eye(nS)
     P_sprime_s = compute_p_sprime_s(P_mat, pi)
     inv = np.linalg.inv(I - gamma*P_sprime_s)
@@ -315,4 +314,17 @@ def compute_discounted_distribution_relative_model_advantage_function_hat(P_mat,
                 sum_sprime = sum_sprime + (P_mat[s*nA + a, s_prime] - xi[s])* U[s, a, s_prime]
             expected_A = expected_A + sum_sprime*delta[s, a]
     return expected_A
+
+def rebuild_Q_from_U(P_mat, U):
+    
+    nS, nA, _ = U.shape
+    Q_test = np.zeros((nS, nA))
+    
+    for s in range(nS):
+        for a in range(nA):
+            for s_prime in range(nS):
+                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s*nA + a][s_prime]
+    
+    return Q_test
+
 

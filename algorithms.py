@@ -112,7 +112,6 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
     # Q_learning main loop
     while m < M:
         # Learning rate initialization
-        
         if debug:
             dec_alpha = alpha*(1- m/M)
         
@@ -127,11 +126,11 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
 
         #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
         # Evaluation step
-        Q[s,a] = Q[s,a] + alpha*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
+        Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
         if(m % status_step == 0):
             J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
             delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
-            print(dec_alpha)
+
         # Setting next iteration
         m = m+1
         s = s_prime
