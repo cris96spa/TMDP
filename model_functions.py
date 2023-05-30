@@ -71,6 +71,10 @@ def compute_delta(d, pi):
             delta[s,a] = pi[s, a] * d[s]
     return delta
 
+def get_delta(mu, P_mat, pi, gamma):
+    d = compute_d(mu, P_mat, pi, gamma)
+    return compute_delta(d, pi)
+
 """
     Extract the policy from a given state action value function
         @Q: the state action value function
@@ -296,6 +300,13 @@ def compute_discounted_distribution_relative_model_advantage_function(A, delta):
             expected_A = expected_A + A[s, a]* delta[s, a]
     return expected_A
 
+def get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu, det=True):
+    pi = get_policy(Q, det)
+    A_s_a = get_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, det)
+    delta = get_delta(mu, P_mat, pi, gamma)
+    return compute_discounted_distribution_relative_model_advantage_function(A_s_a, delta)
+
+
 """
     Compute the discounted distribution relative model advantage function hat A^_tau_tau_prime
         @P_mat: probability transition function
@@ -328,3 +339,47 @@ def rebuild_Q_from_U(P_mat, U):
     return Q_test
 
 
+def get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime):
+    assert P_mat_tau.shape == P_mat_tau_prime.shape
+    de = 0
+    nS_nA = P_mat_tau.shape[0]
+    for i in range(nS_nA):
+        de = de + np.linalg.norm(P_mat_tau_prime[i] - P_mat_tau[i], 1)
+    return de/nS_nA
+
+def get_sup_difference_transition_models(P_mat_tau, P_mat_tau_prime):
+    assert P_mat_tau.shape == P_mat_tau_prime.shape
+    de = -np.inf
+    nS_nA = P_mat_tau.shape[0]
+    for i in range(nS_nA):
+        norm = np.linalg.norm(P_mat_tau_prime[i] - P_mat_tau[i], 1)
+        if norm > de:
+            de = norm
+    return de
+
+
+def get_sup_difference_q(Q):
+    nS, nA = Q.shape
+    sup = -np.inf
+    for s in range(nS):
+        for a in range(nA):
+            for s1 in range(nS):
+                for a1 in range(nA):
+                    diff = abs(Q[s,a]-Q[s1,a1])
+                    if diff > sup:
+                        sup = diff
+    return sup
+
+
+def get_difference_transition_models(P_mat_tau, P_mat_tau_prime, gamma):
+    de = get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime)
+    ds = get_sup_difference_transition_models(P_mat_tau, P_mat_tau_prime)
+    return de*gamma*ds
+
+
+def compute_performance_improvement_lower_bound(A, gamma, Delta_Q, D):
+    return A/(1-gamma) - gamma*Delta_Q*D/(2*(1-gamma)**2)
+
+
+def compute_performance_improvement_lower_bound_2(A, gamma, Delta_Q, tau, tau_prime):
+    return A/(1-gamma) - 2*gamma**2*(tau - tau_prime)**2*Delta_Q/(1-gamma)**2
