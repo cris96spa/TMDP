@@ -380,6 +380,13 @@ def get_difference_transition_models(P_mat_tau, P_mat_tau_prime, gamma):
 def compute_performance_improvement_lower_bound(A, gamma, Delta_Q, D):
     return A/(1-gamma) - gamma*Delta_Q*D/(2*(1-gamma)**2)
 
+def get_performance_improvement_lower_bound(P_mat, P_mat_prime, reward, gamma, Q, mu):
+    A_tau_tau_prime = get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu)
+    D = get_difference_transition_models(P_mat, P_mat_prime, gamma)
+    D_Q = get_sup_difference_q(Q)
+
+    #print(tmdp.gamma* D_Q*D/(2*(1-gamma)**2))
+    return compute_performance_improvement_lower_bound(A_tau_tau_prime, gamma, D_Q, D)
 
 def compute_performance_improvement_lower_bound_2(A, gamma, Delta_Q, tau, tau_prime):
     return A/(1-gamma) - 2*gamma**2*(tau - tau_prime)**2*Delta_Q/(1-gamma)**2

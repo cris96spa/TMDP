@@ -106,8 +106,11 @@ def SARSA(env:Env, s, a, Q, M=5000):
 """
 def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False, main_p=True):
     m = 0
-    J = []
+    J_main_p = []
+    J_curr_p = []
     delta_q = []
+    delta_J = []
+    l_bounds = []
     dec_alpha = alpha
     # Q_learning main loop
     while m < M:
@@ -128,18 +131,19 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
         # Evaluation step
         Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
         if(m % status_step == 0):
-            if main_p:
-                J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
-            else:
-                J.append(get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu))
-            
+            J_0 = get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu)
+            J_p = get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu)
+            J_main_p.append(J_0)
+            J_curr_p.append(J_p)
+            l_bounds.append(get_performance_improvement_lower_bound(env.P_mat_tau, env.P_mat, env.reward, env.gamma, Q, env.mu))
+            delta_J.append(J_0 - J_p )
             delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
 
         # Setting next iteration
         m = m+1
         s = s_prime
         a = a_prime
-    return Q, J, delta_q
+    return Q, J_main_p, J_curr_p, delta_q, delta_J, l_bounds
 
 """
     Q_learning algorithm implementation
