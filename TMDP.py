@@ -1,6 +1,7 @@
 import numpy as np
 
 from DiscreteEnv import DiscreteEnv
+from model_functions import *
 
 """
     A Teleport-MDP is a Markovia decision process that follows (1 - tau) times the model dynamics,
@@ -45,20 +46,30 @@ class TMDP(DiscreteEnv):
         self.P_mat_tau = P_mat_tau
 
     # Sistemare impementazione
-    def step(self, a, seed=None):
+    def step(self, a, seed=None, debug=False):
         np.random.seed(seed)
-        if np.random.rand() <= self.tau:
-            # Teleport branch
-            states = [i for i in range(self.nS)]
-            s_prime = np.random.choice(states, p=self.xi)
-            #print("Teleported from state {} to {}:".format(self.s, s_prime))
-            self.lastaction = a
-            r = self.reward[self.s, a, s_prime]
-            self.s = np.array([s_prime]).ravel()
-            return self.s, r, True, {"prob:", self.xi[s_prime]}
+        if not debug:
+            if np.random.rand() <= self.tau:
+                # Teleport branch
+                states = [i for i in range(self.nS)]
+                s_prime = np.random.choice(states, p=self.xi)
+                #print("Teleported from state {} to {}:".format(self.s, s_prime))
+                self.lastaction = a
+                r = self.reward[self.s, a, s_prime]
+                self.s = np.array([s_prime]).ravel()
+                return self.s, r, True, {"prob:", self.xi[s_prime]}
+            else:
+                #print("Following regular probability transition function")
+                return super(TMDP, self).step(a)
         else:
-            #print("Following regular probability transition function")
-            return super(TMDP, self).step(a)
+            transitions = self.P_tau[self.s[0]][a]
+            sample = categorical_sample([t[0] for t in transitions], self.np_random)
+            p, s, r, d = transitions[sample]
+            # update the current state
+            self.s = np.array([s]).ravel()
+            # update last action
+            self.lastaction = a
+            return self.s, r, d, {"prob":p}
 
 
 # TBD tenere traccia del teleporting 

@@ -5,6 +5,18 @@ from scipy.special import softmax
 np.set_printoptions(precision=3)
 
 """
+    Sample from categorical distribution
+        @prob_n : probability distribution vector
+        @np_random: random number generator
+        return: a categorical state drown from prob_n
+"""
+def categorical_sample(prob_n, np_random):
+    prob_n = np.asarray(prob_n)
+    # Compute cumulative sum of the probability vector
+    csprob_n = np.cumsum(prob_n)
+    return (csprob_n > np_random.random()).argmax()
+
+"""
     Compute the average reward when picking action a in state s
     @nS: number of states
     @nA: number of actions
@@ -31,8 +43,7 @@ def compute_r_s_a(nS, nA, P_mat, reward):
         return: the probability of moving from state s to state sprime under policy pi, as a [nS x nS] matrix 
 """
 def compute_p_sprime_s(P_mat, pi):
-    nS = pi.shape[0]
-    nA = pi.shape[1]
+    nS, nA = pi.shape
     P_sprime_s = np.zeros((nS, nS))
     for s in range(nS):
         for a in range(nA):
@@ -108,6 +119,15 @@ def get_value_function(Q, det=True):
             V[s] = V[s] + Q[s,a]*pi[s,a]
     return V
 
+def rebuild_Q_from_V(nS, nA, P_mat, reward, gamma, V):
+    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
+    Q_test = np.zeros((nS, nA))
+
+    for s in range(nS):
+        for a in range(nA):
+            Q_test[s,a] = r_s_a[s,a] + gamma * np.matmul(P_mat[s*nA +a], np.transpose(V))
+    return Q_test
+
 
 """
     Compute the expected discounted sum of returns
@@ -117,12 +137,14 @@ def get_value_function(Q, det=True):
         return: the expected discounted sum of returns as a scalar value
 """
 def compute_j(r_s_a, pi, d, gamma):
-    nS = pi.shape[0]
-    nA = pi.shape[1]
+    nS, nA = pi.shape
     J = 0
+
     for s in range(nS):
+        sum = 0
         for a in range(nA):
-            J = J + pi[s,a] * r_s_a[s, a]*d[s]
+            sum = sum + r_s_a[s, a]*pi[s,a]
+        J = J + d[s]*sum
     J = J/(1-gamma)
     return J
 
@@ -135,8 +157,7 @@ def compute_j(r_s_a, pi, d, gamma):
         return: the expected discounted sum of returns as a scalar value
 """
 def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
-    nS = pi.shape[0]
-    nA = pi.shape[1]
+    nS, nA = pi.shape
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
     d = compute_d(mu, P_mat, pi, gamma)
     return compute_j(r_s_a, pi, d, gamma)
@@ -154,8 +175,7 @@ def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
     U = np.zeros((nS, nA, nS))
     for s in range(nS):
         for a in range(nA):
-            for s_prime in range(nS):
-                U[s, a, s_prime] = r_s_a[s, a] + gamma*V[s_prime]
+            U[s, a, :] = r_s_a[s, a] + gamma*V
     return U
 
 """
@@ -167,12 +187,22 @@ def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
         return: the state action nextstate value function as an |S|x|A|x|S| matrix
 """
 def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True):
-    nS = Q.shape[0]
-    nA = Q.shape[1]
+    nS, nA = Q.shape
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
     V = get_value_function(Q, det)
     return compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V)
 
+def rebuild_Q_from_U(P_mat, U):
+    
+    nS, nA, _ = U.shape
+    Q_test = np.zeros((nS, nA))
+    
+    for s in range(nS):
+        for a in range(nA):
+            for s_prime in range(nS):
+                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s*nA + a][s_prime]
+    
+    return Q_test
 
 """
     Compute the state policy advantage function A(s,a)
@@ -263,14 +293,23 @@ def get_relative_policy_advantage_function(Q, pi_prime, det=True):
         return: the relative model advantage function as an |S|x|A| matrix
 """
 def compute_relative_model_advantage_function(P_mat_prime, A):
-    nS = A.shape[0]
-    nA = A.shape[1]
+    nS, nA, _ = A.shape
     A_tau_prime = np.zeros((nS, nA))
     for s in range(nS):
         for a in range(nA):
-            for s_prime in range(nS):
-                A_tau_prime[s, a] = A_tau_prime[s, a] + P_mat_prime[s*nA + a][s_prime]*A[s, a, s_prime]
+            A_tau_prime[s, a] = np.matmul(P_mat_prime[s*nA + a], np.transpose(A[s, a, :]))
     return A_tau_prime
+
+def compute_relative_model_advantage_function_2(tau, tau_1, P_mat, xi, U):
+    nS, nA, _ = U.shape
+    A_tau_prime = np.zeros((nS, nA))
+    for s in range(nS):
+        for a in range(nA):
+            for s1 in range(nS):
+                A_tau_prime[s, a] = A_tau_prime[s,a] + (P_mat[s*nA +a][s1]-xi[s1])*U[s,a,s1]
+            A_tau_prime[s, a] = A_tau_prime[s, a]*(tau-tau_1)
+    return A_tau_prime
+
 
 """
     Utility function to get the relative model advantage function A_tau_tau_prime(s,a)
@@ -326,18 +365,6 @@ def compute_discounted_distribution_relative_model_advantage_function_hat(P_mat,
             expected_A = expected_A + sum_sprime*delta[s, a]
     return expected_A
 
-def rebuild_Q_from_U(P_mat, U):
-    
-    nS, nA, _ = U.shape
-    Q_test = np.zeros((nS, nA))
-    
-    for s in range(nS):
-        for a in range(nA):
-            for s_prime in range(nS):
-                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s*nA + a][s_prime]
-    
-    return Q_test
-
 
 def get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime):
     assert P_mat_tau.shape == P_mat_tau_prime.shape
@@ -375,7 +402,7 @@ def get_difference_transition_models(P_mat_tau, P_mat_tau_prime, gamma):
     de = get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime)
     ds = get_sup_difference_transition_models(P_mat_tau, P_mat_tau_prime)
     return de*gamma*ds
-
+    
 
 def compute_performance_improvement_lower_bound(A, gamma, Delta_Q, D):
     return A/(1-gamma) - gamma*Delta_Q*D/(2*(1-gamma)**2)
@@ -385,8 +412,14 @@ def get_performance_improvement_lower_bound(P_mat, P_mat_prime, reward, gamma, Q
     D = get_difference_transition_models(P_mat, P_mat_prime, gamma)
     D_Q = get_sup_difference_q(Q)
 
-    #print(tmdp.gamma* D_Q*D/(2*(1-gamma)**2))
     return compute_performance_improvement_lower_bound(A_tau_tau_prime, gamma, D_Q, D)
 
 def compute_performance_improvement_lower_bound_2(A, gamma, Delta_Q, tau, tau_prime):
     return A/(1-gamma) - 2*gamma**2*(tau - tau_prime)**2*Delta_Q/(1-gamma)**2
+
+
+def get_performance_improvement_lower_bound_2(P_mat, P_mat_prime, reward, gamma, Q, mu, tau, tau_prime):
+    A_tau_tau_prime = get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu)
+    D_Q = get_sup_difference_q(Q)
+
+    return compute_performance_improvement_lower_bound_2(A_tau_tau_prime, gamma, D_Q, tau, tau_prime)

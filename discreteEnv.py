@@ -5,18 +5,8 @@ import numpy as np
 
 from gym import Env, spaces
 from gym.utils import seeding
+from model_functions import *
 
-"""
-    Sample from categorical distribution
-        @prob_n : probability distribution vector
-        @np_random: random number generator
-        return: a categorical state drown from prob_n
-"""
-def categorical_sample(prob_n, np_random):
-    prob_n = np.asarray(prob_n)
-    # Compute cumulative sum of the probability vector
-    csprob_n = np.cumsum(prob_n)
-    return (csprob_n > np_random.random()).argmax()
 
 """
     Discrete Environment class. It presents the following attributes:
