@@ -16,7 +16,7 @@ from model_functions import *
 """
 class TMDP(DiscreteEnv):
 
-    def __init__(self, env:DiscreteEnv,  xi, tau=0, gamma=1, seed=None):
+    def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=1., seed=None):
         self.tau = tau
         self.xi = xi
         self.reward = env.reward

@@ -2,8 +2,6 @@ import numpy as np
 from gym import Env
 from scipy.special import softmax
 
-np.set_printoptions(precision=3)
-
 """
     Sample from categorical distribution
         @prob_n : probability distribution vector
@@ -300,30 +298,23 @@ def compute_relative_model_advantage_function(P_mat_prime, A):
             A_tau_prime[s, a] = np.matmul(P_mat_prime[s*nA + a], np.transpose(A[s, a, :]))
     return A_tau_prime
 
-def compute_relative_model_advantage_function_2(tau, tau_1, P_mat, xi, U):
+"""
+    Compute the relative model advantage function \hat{A}_tau_tau_prime(s,a)
+    N.B. to get the actual relative model advantage function you have to multiply times (\tau - \tau')
+        @P_mat_prime: the probability transition function to be compared
+        @xi: state teleport probability distribution
+        @U: state action next state value function as an |S|x|A|x|S| matrix
+        return: the relative model advantage function hat as an |S|x|A| matrix
+"""
+def compute_relative_model_advantage_function_hat(P_mat, xi, U):
     nS, nA, _ = U.shape
     A_tau_prime = np.zeros((nS, nA))
     for s in range(nS):
         for a in range(nA):
             for s1 in range(nS):
                 A_tau_prime[s, a] = A_tau_prime[s,a] + (P_mat[s*nA +a][s1]-xi[s1])*U[s,a,s1]
-            A_tau_prime[s, a] = A_tau_prime[s, a]*(tau-tau_1)
+            A_tau_prime[s, a] = A_tau_prime[s, a]
     return A_tau_prime
-
-
-"""
-    Utility function to get the relative model advantage function A_tau_tau_prime(s,a)
-        @P_mat: probability transition function
-        @P_mat_prime: the probability transition function to be compared
-        @reward: the reward function
-        @gamma: discount factor
-        @Q: the state action value function
-        @det: deterministic flag. Whether or not extracting a deterministic policy
-        return: the relative model advantage function as an |S|x|A| matrix
-"""
-def get_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, det=True):
-    A = get_model_advantage_function(P_mat, reward, gamma, Q, det)
-    return compute_relative_model_advantage_function(P_mat_prime, A)
 
 """
     Compute the discounted distribution relative model advantage function A_tau_tau_prime
@@ -339,30 +330,21 @@ def compute_discounted_distribution_relative_model_advantage_function(A, delta):
             expected_A = expected_A + A[s, a]* delta[s, a]
     return expected_A
 
-def get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu, det=True):
-    pi = get_policy(Q, det)
-    A_s_a = get_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, det)
-    delta = get_delta(mu, P_mat, pi, gamma)
-    return compute_discounted_distribution_relative_model_advantage_function(A_s_a, delta)
-
-
 """
-    Compute the discounted distribution relative model advantage function hat A^_tau_tau_prime
+    Compute the discounted distribution relative model advantage function hat \hat{A}^_tau_tau_prime
+        N.B. to get the actual discounted distribution relative model advantage function you have to multiply times (\tau - \tau')
         @P_mat: probability transition function
         @xi: state teleport probability distribution
         @U: state action next state value function as an |S|x|A|x|S| matrix
         @delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
         return: the discounted distribution relative model advantage function hat as a scalar
 """
-def compute_discounted_distribution_relative_model_advantage_function_hat(P_mat, xi, U, delta):
+def compute_discounted_distribution_relative_model_advantage_function_hat(A_tau_hat, delta):
     expected_A = 0
-    nS, nA, _ = U.shape
+    nS, nA = A_tau_hat.shape
     for s in range(nS):
         for a in range(nA):
-            sum_sprime = 0
-            for s_prime in range(nS):
-                sum_sprime = sum_sprime + (P_mat[s*nA + a, s_prime] - xi[s])* U[s, a, s_prime]
-            expected_A = expected_A + sum_sprime*delta[s, a]
+            expected_A = expected_A + A_tau_hat[s, a]*delta[s, a]
     return expected_A
 
 
@@ -396,30 +378,13 @@ def get_sup_difference_q(Q):
                     if diff > sup:
                         sup = diff
     return sup
-
-
-def get_difference_transition_models(P_mat_tau, P_mat_tau_prime, gamma):
-    de = get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime)
-    ds = get_sup_difference_transition_models(P_mat_tau, P_mat_tau_prime)
-    return de*gamma*ds
     
 
-def compute_performance_improvement_lower_bound(A, gamma, Delta_Q, D):
-    return A/(1-gamma) - gamma*Delta_Q*D/(2*(1-gamma)**2)
+def compute_performance_improvement_lower_bound(A_hat, gamma, Delta_Q, tau:float, tau_1:float):
+    return A_hat*(tau-tau_1)/(1-gamma) - 2*gamma**2*Delta_Q*(tau-tau_1)**2/(2*(1-gamma)**2)
 
-def get_performance_improvement_lower_bound(P_mat, P_mat_prime, reward, gamma, Q, mu):
-    A_tau_tau_prime = get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu)
-    D = get_difference_transition_models(P_mat, P_mat_prime, gamma)
-    D_Q = get_sup_difference_q(Q)
+def compute_tau_prime(A_hat, gamma, tau, Delta_Q):
+    return tau - A_hat*(1-gamma)/(4*gamma**2*Delta_Q)
 
-    return compute_performance_improvement_lower_bound(A_tau_tau_prime, gamma, D_Q, D)
-
-def compute_performance_improvement_lower_bound_2(A, gamma, Delta_Q, tau, tau_prime):
-    return A/(1-gamma) - 2*gamma**2*(tau - tau_prime)**2*Delta_Q/(1-gamma)**2
-
-
-def get_performance_improvement_lower_bound_2(P_mat, P_mat_prime, reward, gamma, Q, mu, tau, tau_prime):
-    A_tau_tau_prime = get_discounted_distribution_relative_model_advantage_function(P_mat, P_mat_prime, reward, gamma, Q, mu)
-    D_Q = get_sup_difference_q(Q)
-
-    return compute_performance_improvement_lower_bound_2(A_tau_tau_prime, gamma, D_Q, tau, tau_prime)
+def compute_optimal_lower_bound(A_hat, gamma, Delta_Q):
+    return A_hat**2/((8*gamma**2*Delta_Q))

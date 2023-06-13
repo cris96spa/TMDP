@@ -111,91 +111,6 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
     delta_q = []
     delta_J = []
     l_bounds = []
-    nS = Q.shape[0]
-    visits = np.zeros(nS)
-    dec_alpha = np.ones(nS)*alpha
-    # Q_learning main loop
-    while m < M:
-        # Learning rate initialization
-        visits[s] = visits[s]+1
-        # epsilon update
-        eps = (1 - m/M)**2
-        # Perform a step in the environment, picking action a
-        s_prime, r, d, p = env.step(a, debug=debug)
-
-        # Policy improvement step
-        # N.B. allowed action is not present in the Env object, must be managed
-        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
-
-        #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
-        # Evaluation step
-        Q[s,a] = Q[s,a] + dec_alpha[s]*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
-        if(m % status_step == 0):
-            J_0 = get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu)
-            J_p = get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu)
-            J_main_p.append(J_0)
-            J_curr_p.append(J_p)
-            l_bounds.append(get_performance_improvement_lower_bound(env.P_mat_tau, env.P_mat, env.reward, env.gamma, Q, env.mu))
-            delta_J.append(J_0 - J_p )
-            delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
-
-        # Setting next iteration
-        m = m+1
-        s = s_prime
-        a = a_prime
-        dec_alpha[s] = max(0, alpha*(1- visits[s]*nS/M))
-    return Q, J_main_p, J_curr_p, delta_q, delta_J, l_bounds
-
-
-def Q_learning_2(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False, main_p=True):
-    m = 0
-    J_main_p = []
-    J_curr_p = []
-    delta_q = []
-    delta_J = []
-    l_bounds = []
-    nS = Q.shape[0]
-    visits = np.zeros(nS)
-    dec_alpha = np.ones(nS)*alpha
-    # Q_learning main loop
-    while m < M:
-        # Learning rate initialization
-        visits[s] = visits[s]+1
-        # epsilon update
-        eps = (1 - m/M)**2
-        # Perform a step in the environment, picking action a
-        s_prime, r, d, p = env.step(a, debug=debug)
-
-        # Policy improvement step
-        # N.B. allowed action is not present in the Env object, must be managed
-        a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
-
-        #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
-        # Evaluation step
-        Q[s,a] = Q[s,a] + dec_alpha[s]*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
-        if(m % status_step == 0):
-            J_0 = get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu)
-            J_p = get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu)
-            J_main_p.append(J_0)
-            J_curr_p.append(J_p)
-            l_bounds.append(get_performance_improvement_lower_bound(env.P_mat_tau, env.P_mat, env.reward, env.gamma, Q, env.mu))
-            delta_J.append(J_0 - J_p )
-            delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
-
-        # Setting next iteration
-        m = m+1
-        s = s_prime
-        a = a_prime
-        dec_alpha[s] = max(0, alpha*(1- visits[s]*nS/M))
-    return Q, J_main_p, J_curr_p, delta_q, delta_J, l_bounds
-
-def Q_learning_3(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False, main_p=True):
-    m = 0
-    J_main_p = []
-    J_curr_p = []
-    delta_q = []
-    delta_J = []
-    l_bounds = []
     nS, nA = Q.shape
     visits = np.zeros(nS)
     dec_alpha = np.ones(nS)*alpha
@@ -216,27 +131,44 @@ def Q_learning_3(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, de
         # Evaluation step
         Q[s,a] = Q[s,a] + dec_alpha[s]*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
         if(m % status_step == 0):
+            # Compute performance on the original problem
             J_0 = get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu)
-            J_p = get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu)
             J_main_p.append(J_0)
+
+            # Compute performance on the current problem
+            J_p = get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu)
             J_curr_p.append(J_p)
+
+            ### Compute the lower bound on performance improvement ###
+            # Compute the discount state distribution
             d = compute_d(env.mu, env.P_mat_tau, get_policy(Q), env.gamma)
+            # Compute the gamma discounted state distribution
             delta = compute_delta(d, get_policy(Q))
+            # Compute the state value function
             V = get_value_function(Q) 
+            # Compute the expected reward when picking action a in state s
             r_s_a = compute_r_s_a(nS, nA, env.P_mat_tau, env.reward)
+            # Compute the state action next-state value function U_tau(s,a,s') = R(s,a) + \gamma*V_tau(s')
             U = compute_state_action_nextstate_value_function(nS, nA, r_s_a, env.gamma, V)
+            # Rebuild Q using U as Q_tau(s,a) = \sum{s' \in S}P_tau(s'|s,a)*U_tau(s,a,s')
             Q_t = rebuild_Q_from_U(env.P_mat_tau, U)
 
-            A_tau_tau = compute_relative_model_advantage_function_2(env.tau, 0, env.P_mat, env.xi, U)
-            A_2 = compute_discounted_distribution_relative_model_advantage_function(A_tau_tau, delta)
-            de = get_expected_difference_transition_models(env.P_mat_tau, env.P_mat)
-            d_inf = get_sup_difference_transition_models(env.P_mat_tau, env.P_mat)
-            d_d = get_difference_transition_models(env.P_mat_tau, env.P_mat, env.gamma)
+            # Compute the relative model advantage function hat \hat{A}_{tau, mu}(s,a)
+            A_tau_hat = compute_relative_model_advantage_function_hat(env.P_mat, env.xi, U)
+            # Compute the discounted distribution relative model advantage function hat \hat{A}_{tau, mu}
+            A_hat = compute_discounted_distribution_relative_model_advantage_function_hat(A_tau_hat, delta)
+            # The dissimilarity term D = D_e * gamma * D_inf is upperbounded by 4*gamma+(tau - tau_1)
+            # Compute Delta Q_tau as the superior among the difference of the L_1 norm of elements of Q_tau
             d_q_t = get_sup_difference_q(Q_t)
-            l_b = compute_performance_improvement_lower_bound(A_2, env.gamma, d_q_t, d_d)
+            
+            # Compute the performance improvement lower bound when moving to tau=0
+            l_b = compute_performance_improvement_lower_bound(A_hat, env.gamma, d_q_t, env.tau, 0)
 
             l_bounds.append(l_b)
+
+            # Compute the empirical performance improvement when moving to tau=0
             delta_J.append(J_0 - J_p )
+
             delta_q.append(np.linalg.norm(Q - Q_star, np.inf))
 
         # Setting next iteration
