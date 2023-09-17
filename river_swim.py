@@ -14,7 +14,7 @@ from river_swim_generator import generate_river
 
 class River(DiscreteEnv):
 
-    def __init__(self, nS, gamma=1, small=5, large=10000, seed=None):
+    def __init__(self, nS, gamma=1., small=5, large=10000, seed=None):
 
         # Generate river parameters using the auxiliary function    
         nS, nA, p, r, mu = generate_river(nS, small, large)

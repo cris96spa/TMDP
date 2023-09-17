@@ -312,8 +312,7 @@ def compute_relative_model_advantage_function_hat(P_mat, xi, U):
     for s in range(nS):
         for a in range(nA):
             for s1 in range(nS):
-                A_tau_prime[s, a] = A_tau_prime[s,a] + (P_mat[s*nA +a][s1]-xi[s1])*U[s,a,s1]
-            A_tau_prime[s, a] = A_tau_prime[s, a]
+                A_tau_prime[s, a] = A_tau_prime[s,a] + (P_mat[s*nA +a][s1]- xi[s1])*U[s,a,s1]
     return A_tau_prime
 
 """
