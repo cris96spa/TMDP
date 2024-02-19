@@ -20,34 +20,65 @@ from model_functions import *
     - observation_space: observation space of the environment
 """
 class DiscreteEnv(Env):
-    def __init__(self, nS, nA, P, mu, gamma=1, seed=None) -> None:
+    """_summary_
+
+    Args:
+        Env (gym.ENV): Environment to be extended to obtain a discrete environment
+    """
+    def __init__(self, nS, nA, P, mu, gamma=1., seed=None) -> None:
+        """
+        Constructor
+
+        Args:
+            nS (int): number of states
+            nA (int): number of actions
+            P (dict): Dictionary of dictionary of list. P[s][a] = [(probability, nextstate, reward, done), ...]
+            mu (list): initial state distribution [nS]
+            gamma (float, optional): discount factor. Default to 1.
+            seed (float, optional): pseudo-random generator seed. Default to None.
+        """ 
+        #: P (dict): P[s][a] = [(probability, nextstate, reward, done), ...]
         self.P = P
+
+        #: mu (list): initial state distribution [nS]
         self.mu = mu
+
+        #: nS (int): number of states
         self.nS = nS
+
+        #: nA (int): nnumber of actions
         self.nA = nA
+
+        #: gamma (float, optional): discount factor
         self.gamma = gamma
 
+        #: lastaction (): last executed action
         self.lastaction=None
 
+        #: action_space (gym.spaces.discrete.Discrete): discrete action space
         self.action_space = spaces.Discrete(self.nA)
+
+        #: observation_space (gym.spaces.discrete.Discrete): discrete state space
         self.observation_space = spaces.Discrete(self.nS)
 
         self.seed(seed)
         self.reset()
     
-    """
-        Set a seed for reproducibility of results
-    """
+   
     def seed(self, seed=None):
+        """
+        Set a seed for reproducibility of results
+        """
         # set a random generator
         self.np_random, seed = seeding.np_random(seed)
 
         return [seed]
 
-    """
-        Reset the environment to an initial state
-    """
+   
     def reset(self):
+        """
+        Reset the environment to an initial state
+        """
         # Get an initial state, from inistial state distribution
         s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
@@ -73,4 +104,5 @@ class DiscreteEnv(Env):
         self.s = np.array([s]).ravel()
         # update last action
         self.lastaction = a
-        return self.s, r, d, {"prob":p}
+        done = False if  np.random.rand() <= self.gamma else True
+        return self.s, r, done, p

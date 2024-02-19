@@ -18,6 +18,7 @@ from model_functions import *
 def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
     r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
     Q = np.zeros((nS, nA))
+    iterations = 0
     loop = True
     while loop:
         Q_old = Q.copy()
@@ -30,9 +31,10 @@ def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
                     sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
                 Q[s,a] = r_s_a[s, a] + gamma*sum
         delta_q = np.linalg.norm(Q - Q_old, np.inf)
+        iterations = iterations + 1 
         if delta_q <= epsilon:
             loop = False
-    return Q
+    return Q, iterations
 
 """
     Epsilon greedy action selection
@@ -121,7 +123,7 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
         # epsilon update
         eps = (1 - m/M)**2
         # Perform a step in the environment, picking action a
-        s_prime, r, d, p = env.step(a, debug=debug)
+        s_prime, r, d, p =  .step(a, debug=debug)
 
         # Policy improvement step
         # N.B. allowed action is not present in the Env object, must be managed
@@ -130,6 +132,8 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
         #print("Step:", m, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime)
         # Evaluation step
         Q[s,a] = Q[s,a] + dec_alpha[s]*(r + env.gamma*np.max(Q[s_prime, :]) - Q[s,a])
+
+        #Compute performance metrics for evaluation purposes
         if(m % status_step == 0):
             # Compute performance on the original problem
             J_0 = get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu)

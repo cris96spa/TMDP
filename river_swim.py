@@ -4,18 +4,31 @@ from DiscreteEnv import DiscreteEnv
 from river_swim_generator import generate_river
 
 """
+    
+"""
+
+class River(DiscreteEnv):
+    """
     A river swim environment is an environment in which there are several sequential states and
     only two possible moves, left and right. It is assumed that left move is in the same direction of the river
     flow, hence it always lead to the immediatly left state, whereas the right move is done against the flow, 
     meaning that it has a very small probability of leading to the left, a pretty high probability of remaining 
     in the same state and a small probability of moving to the right. The right you are able to move, the higher
     will be rewards.
-"""
 
-class River(DiscreteEnv):
+    Args:
+        DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
+    """
+    def __init__(self, nS, gamma=1., small=5, large=10000, seed=None):
+        """Constructor
 
-    def __init__(self, nS, gamma=1, small=5, large=10000, seed=None):
-
+        Args:
+            nS (int): _description_
+            gamma (float, optional): discount factor. Default to 1.
+            small (int, optional): small reward. Defaults to 5.
+            large (int, optional): large reward. Defaults to 10000.
+            seed (float, optional): pseudo-random generator seed. Default to None.
+        """
         # Generate river parameters using the auxiliary function    
         nS, nA, p, r, mu = generate_river(nS, small, large)
 
@@ -46,3 +59,6 @@ class River(DiscreteEnv):
         self.P_mat = P_mat
         # Calling the superclass constructor to initialize other parameters
         super(River, self).__init__(nS, nA, P, mu, gamma, seed)
+
+
+        
