@@ -18,17 +18,14 @@ from model_functions import *
     - lastaction: used for rendering
     - action_space: action space of the environment
     - observation_space: observation space of the environment
-"""
-class DiscreteEnv(Env):
-    """_summary_
 
     Args:
         Env (gym.ENV): Environment to be extended to obtain a discrete environment
-    """
-    def __init__(self, nS, nA, P, mu, gamma=1., seed=None) -> None:
-        """
-        Constructor
+"""
+class DiscreteEnv(Env):
 
+    """
+        Constructor
         Args:
             nS (int): number of states
             nA (int): number of actions
@@ -36,7 +33,9 @@ class DiscreteEnv(Env):
             mu (list): initial state distribution [nS]
             gamma (float, optional): discount factor. Default to 1.
             seed (float, optional): pseudo-random generator seed. Default to None.
-        """ 
+    """ 
+    def __init__(self, nS, nA, P, mu, gamma=1., seed=None) -> None:
+        
         #: P (dict): P[s][a] = [(probability, nextstate, reward, done), ...]
         self.P = P
 
@@ -65,21 +64,22 @@ class DiscreteEnv(Env):
         self.reset()
     
    
-    def seed(self, seed=None):
-        """
+    """
         Set a seed for reproducibility of results
-        """
+    """
+    def seed(self, seed=None):
+        
         # set a random generator
         self.np_random, seed = seeding.np_random(seed)
 
         return [seed]
 
-   
-    def reset(self):
-        """
+    """
         Reset the environment to an initial state
-        """
-        # Get an initial state, from inistial state distribution
+    """
+    def reset(self):
+        
+        # Get an initial state, from initial state distribution
         s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
         # Set the initial state
@@ -92,17 +92,17 @@ class DiscreteEnv(Env):
             return next state, the immediate reward, a done flag and the probability of that specific transition
     """
     def step(self, a):
-        """
-            Get the probability transition associated to state s and action a. 
-            P[s][a][0] is a vector of length nS, telling the probability of moving from state s, to each other state s' in S, picking action a
-            
-        """
+        
+        # Get the list of possible transitions from the current state, given the action a
         transitions = self.P[self.s[0]][a]
-        sample = categorical_sample([t[0] for t in transitions], self.np_random)
+        # Get the probability of moving from s to every possible next state, while picking action a
+        probabilities = [t[0] for t in transitions]
+        sample = categorical_sample(probabilities, self.np_random)
+
         p, s, r, d = transitions[sample]
         # update the current state
         self.s = np.array([s]).ravel()
         # update last action
         self.lastaction = a
-        done = False if  np.random.rand() <= self.gamma else True
-        return self.s, r, done, p
+        
+        return self.s, r, d, p

@@ -6,12 +6,13 @@ from scipy.special import softmax
     Sample from categorical distribution
         @prob_n : probability distribution vector
         @np_random: random number generator
-        return: a categorical state drawn from prob_n
+        return: a categorical sampling from the given probability distribution
 """
 def categorical_sample(prob_n, np_random):
     prob_n = np.asarray(prob_n)
-    # Compute cumulative sum of the probability vector
+    # Compute cumulative sum of the probability vector, that is used for the CDF of the categorical distribution
     csprob_n = np.cumsum(prob_n)
+    # np_randoim.random() generates a random number in [0,1], then we find the first index of the cumulative sum that is greater than the random number
     return (csprob_n > np_random.random()).argmax()
 
 """
