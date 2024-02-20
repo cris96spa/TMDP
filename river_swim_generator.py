@@ -1,34 +1,47 @@
 import numpy as np
 
-def generate_river(nS=6, small=5, large=10000):
-    """
-    Generate a river
+"""
+    Generate a river swim 
     Args:
         nS (int): number of states
-        gamma (float, optional): discount factor. Default to 1.
-        hh
-        seed (float, optional): pseudo-random generator seed. Default to None.
+        small (float): small reward
+        large (float): large reward
 
-     Returns:
-            (int, int, numpy.ndarray, numpy.ndarray, numpy.ndarray): number of states, 
+    Returns:    
+        (int, int, numpy.ndarray, numpy.ndarray, numpy.ndarray): number of states, 
                 number of actions, probability matrix, reward matrix, initial state distribution
-    """
+"""
+def generate_river(nS=6, small=5, large=10000):
+
     nA = 2
     p = compute_probabilities(nS, nA)
     r = compute_rewards(nS, nA, small, large)
     mu = compute_mu(nS)
     return nS, nA, p, r, mu
 
-def compute_probabilities(nS, nA):
-    """
-    Compute probabilities
+"""
+    Compute probabilities as follows:
+        - 1.0 to loop for left action in leftmost state 
+        - 0.7 to loop for right action in the leftmost state
+
+        - 1.0 to go left for left action in any non-first state
+
+        - 0.1 to go left for right action in any middle state
+        - 0.6 to loop for right action in any middle state
+        - 0.3 to go right for right action in any middle state
+        
+        - 0.3 to loop for right action in the rightmost state
+        - 0.7 to go left for right action in the rightmost state
+
     Args:
         nS (int): number of states
         nA (int): number of actions
 
      Returns:
             (numpy.ndarray): probabilities of moving from each state to each other, when an action is taken [nS, nA, nS]
-    """
+"""
+def compute_probabilities(nS, nA):
+ 
     p = np.zeros((nS, nA, nS))
     for i in range(1, nS):
         # Set to 1 the probability of moving to the immediately left state, when left action is taken
@@ -51,8 +64,7 @@ def compute_probabilities(nS, nA):
 
     return p
 
-def compute_rewards(nS, nA, small, large):
-    """
+"""
     Compute rewards
 
     Args:
@@ -63,7 +75,9 @@ def compute_rewards(nS, nA, small, large):
 
      Returns:
             (numpy.ndarray): immediate reward matrix of moving from each state to each other when an action is taken [nS, nA, nS]
-    """
+"""
+def compute_rewards(nS, nA, small, large):
+
     # initialize all rewards to 0
     r = np.zeros((nS, nA, nS))
     
@@ -74,11 +88,14 @@ def compute_rewards(nS, nA, small, large):
     r[nS - 1, 1, nS - 1] = large
     return r
 
-
 """
-    Compute initial state probability vector
-        @ns: number of states
-        return the initial state probability vector
+    Compute rewards
+
+    Args:
+        nS (int): number of states
+
+     Returns:
+            (numpy.ndarray): initial state probability vector
 """
 def compute_mu(nS):
     # Uniform probability distribution of initial states
