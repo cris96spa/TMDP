@@ -123,7 +123,7 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
         # epsilon update
         eps = (1 - m/M)**2
         # Perform a step in the environment, picking action a
-        s_prime, r, d, p =  .step(a, debug=debug)
+        s_prime, r, d, p =  env.step(a, debug=debug)
 
         # Policy improvement step
         # N.B. allowed action is not present in the Env object, must be managed

@@ -10,6 +10,11 @@ from river_swim_generator import generate_river
     meaning that it has a ver'y small probability of leading to the left, a pretty high probability of remain'ing 
     in the same state and a small probability of moving to the right. The right you are able to move, the higher
     will be rewards.
+    
+    It presents the following attributes:
+        - reward (np.ndarray): rewards associated to each action for each state [ns, nA, nS]
+        - P_mat (np.ndarray): Matrix probability of moving from state s to s' (for each pairs (s,s') when picking action a (for each a) [nS, nA, nS]
+        - allowed_actions (list): List of allowed action for each state
 
     Args:
         DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
@@ -36,7 +41,7 @@ class River(DiscreteEnv):
         # Creating the dictionary of dictionary of lists that represents P
         P = {s: {a :[] for a in range(nA)} for s in range(nS)}
         # Probability matrix of the problem dynamics
-        P_mat = np.zeros(shape=(nS*nA, nS))
+        P_mat = np.zeros(shape=(nS, nA, nS))
         self.allowed_actions = []
 
         # Assigning values to P and P_mat
@@ -52,10 +57,11 @@ class River(DiscreteEnv):
                     reward = r[s][a][s1]
     
                     # Build P[s][a] that is a list of tuples, containint the probability of that move, the next state, the associated reward and a termination flag
-                    P[s][a].append((prob, s1, reward, False))
+                    # The termination flag is set to True if the reward is different from 0, meaning that the agent reached the goal
+                    P[s][a].append((prob, s1, reward, reward !=0))
 
                     # Assign P_mat values
-                    P_mat[s*nA + a][s1] = prob
+                    P_mat[s][a][s1] = prob
                     
         self.P_mat = P_mat
         # Calling the superclass constructor to initialize other parameters

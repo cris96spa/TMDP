@@ -10,14 +10,14 @@ from model_functions import *
 
 """
     Discrete Environment class. It presents the following attributes:
-    - nS: number of states
-    - nA: number of actions
-    - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
-    - mu: initial state distribution as list or array of length nS
-    - gamma: discount factor
-    - lastaction: used for rendering
-    - action_space: action space of the environment
-    - observation_space: observation space of the environment
+        - nS: number of states
+        - nA: number of actions
+        - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
+        - mu: initial state distribution as list or array of length nS
+        - gamma: discount factor
+        - lastaction: used for rendering
+        - action_space: action space of the environment
+        - observation_space: observation space of the environment
 
     Args:
         Env (gym.ENV): Environment to be extended to obtain a discrete environment
@@ -58,7 +58,7 @@ class DiscreteEnv(Env):
         self.action_space = spaces.Discrete(self.nA)
 
         #: observation_space (gym.spaces.discrete.Discrete): discrete state space
-        self.observation_space = spaces.Discrete(self.nS)
+        self.h = spaces.Discrete(self.nS)
 
         self.seed(seed)
         self.reset()
@@ -87,9 +87,11 @@ class DiscreteEnv(Env):
         return self.s
     
     """
-        Environment transition step implementation
-            @a: the action to be executed
-            return next state, the immediate reward, a done flag and the probability of that specific transition
+        Environment transition step implementation.
+        Args:
+            -a: the action to be executed
+        return:
+            next state, the immediate reward, termination flag, the probability of that specific transition
     """
     def step(self, a):
         
@@ -98,11 +100,10 @@ class DiscreteEnv(Env):
         # Get the probability of moving from s to every possible next state, while picking action a
         probabilities = [t[0] for t in transitions]
         sample = categorical_sample(probabilities, self.np_random)
-
-        p, s, r, d = transitions[sample]
+        p, s, r, terminal = transitions[sample]
         # update the current state
         self.s = np.array([s]).ravel()
         # update last action
         self.lastaction = a
         
-        return self.s, r, d, p
+        return self.s, r, terminal, p

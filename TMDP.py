@@ -1,36 +1,27 @@
 import numpy as np
-
 from DiscreteEnv import DiscreteEnv
 from model_functions import *
+
 """
-    
-    - nS: number of states
-    - nA: number of actions
-    - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
-    - isd: initial state distribution as list or array of length nS
-    - gamma: discount factor
-    - tau: teleport probability
-    - xi: state teleport probability distribution
-"""
-class TMDP(DiscreteEnv):
-    """
-    A Teleport-MDP (T;DP) is a Markovian decision process that follows (1 - tau) times the model dynamics,
+    A Teleport-MDP (TMDP) is a Markovian decision process that follows (1 - tau) times the model dynamics,
     while tau times the state teleport probability distribution xi
 
     Args:
         DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
+"""
+class TMDP(DiscreteEnv):
     """
-    def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=1., seed=None):
-        """
         Constructor
 
         Args:
-            env (DiscreteEnv): _description_
+            env (DiscreteEnv): Environmental class to be extended to obtain a TMDP
             xi (numpy.ndarray): state teleport probability distribution
             tau (float, optional): teleport probability. Default to 0.
-            h
+            gamma: discount factor. Default to 0.99
             seed (float, optional): pseudo-random generator seed. Default to None.
-        """
+    """
+    def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=0.99, seed=None):
+        
         #: tau (float, optional): teleport probability
         self.tau = tau
         
