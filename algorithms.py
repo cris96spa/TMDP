@@ -7,12 +7,12 @@ from model_functions import *
 
 """
     Compute Q* using bellman optimality operator iteratively
-    @nS: number of states
-    @nA: number of actions
-    @P_mat: probability transition function
-    @reward: reward function
-    @epsilon: stopping threshold value
-    @gamma: discount factor
+        - nS: number of states
+        - nA: number of actions
+        - P_mat: probability transition function
+        - reward: reward function
+        - epsilon: stopping threshold value
+        - gamma: discount factor
     return: Q* estimated as an iterative application of the bellman optimality operator until |T*(Q)-Q|<=epsilon
 """
 def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
@@ -28,7 +28,7 @@ def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
                 a_star = 0
                 for s_prime in range(nS):
                     a_star = np.argmax(Q[s_prime])
-                    sum = sum + P_mat[s*nA + a][s_prime]*Q[s_prime, a_star]
+                    sum = sum +  P_mat[s][a][s_prime]*Q[s_prime, a_star]
                 Q[s,a] = r_s_a[s, a] + gamma*sum
         delta_q = np.linalg.norm(Q - Q_old, np.inf)
         iterations = iterations + 1 
@@ -38,10 +38,10 @@ def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
 
 """
     Epsilon greedy action selection
-        @s: current state
-        @Q: current state action value function
-        @eps: exploration/exploration factor
-        @allowed_actions: actions allowed in the given state s
+        - s: current state
+        - Q: current state action value function
+        - eps: exploration/exploration factor
+        - allowed_actions: actions allowed in the given state s
         return an epsilon greedy action choice
 """
 def eps_greedy(s, Q, eps, allowed_actions):
@@ -66,11 +66,11 @@ def eps_greedy(s, Q, eps, allowed_actions):
 
 """
     SARSA algorithm implementation
-        @env: environment object
-        @s: current state
-        @a: first action to be taken
-        @Q: current state-action value function
-        @M: number of iterations to be considered
+        - env: environment object
+        - s: current state
+        - a: first action to be taken
+        - Q: current state-action value function
+        - M: number of iterations to be considered
         return the state action value function under the pseudo-optimal policy found
 """
 def SARSA(env:Env, s, a, Q, M=5000):
@@ -98,12 +98,12 @@ def SARSA(env:Env, s, a, Q, M=5000):
 
 """
     Q_learning algorithm implementation
-        @env: environment object
-        @s: current state
-        @a: first action to be taken
-        @Q: current state-action value function
-        @M: number of iterations to be considered
-        @status: intermediate results flag
+        - env: environment object
+        - s: current state
+        - a: first action to be taken
+        - Q: current state-action value function
+        - M: number of iterations to be considered
+        - status: intermediate results flag
         return the state action value function under the pseudo-optimal policy found
 """
 def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False, main_p=True):
@@ -184,12 +184,12 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
 
 """
     Q_learning algorithm implementation
-        @env: environment object
-        @s: current state
-        @a: first action to be taken
-        @Q: current state-action value function
-        @M: number of iterations to be considered
-        @status: intermediate results flag
+        - env: environment object
+        - s: current state
+        - a: first action to be taken
+        - Q: current state-action value function
+        - M: number of iterations to be considered
+        - status: intermediate results flag
         return the state action value function under the pseudo-optimal policy found
 """
 def batch_Q_learning(env:Env, s, a, Q, Q_star, batch_size, M=5000, status_step=200):
@@ -227,9 +227,9 @@ def batch_Q_learning(env:Env, s, a, Q, Q_star, batch_size, M=5000, status_step=2
 
 """
     Compare two different policies in terms of a distance measure
-        @measure: the measure to be used for the comparison
-        @pi: a policy row vector
-        @pi_prime: a second policy row vector
+        - measure: the measure to be used for the comparison
+        - pi: a policy row vector
+        - pi_prime: a second policy row vector
         return the difference, according to the given measure, of the two policies
 """
 def compare_policies(measure:DistanceMeasure, pi, pi_prime):

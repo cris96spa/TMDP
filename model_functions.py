@@ -4,9 +4,10 @@ from scipy.special import softmax
 
 """
     Sample from categorical distribution
-        - prob_n : probability distribution vector
+    Args:
+        - prob_n (np.ndarray) : probability distribution vector [nS]
         - np_random: random number generator
-        return: a categorical sampling from the given probability distribution
+    return (int): a categorical sampling from the given probability distribution
 """
 def categorical_sample(prob_n, np_random):
     prob_n = np.asarray(prob_n)
@@ -16,30 +17,32 @@ def categorical_sample(prob_n, np_random):
     return (csprob_n > np_random.random()).argmax()
 
 """
-    Compute the average reward when picking action a in state s
-        - nS: number of states
-        - nA: number of actions
-        - P_mat: probability transition function
-        - reward: the reward function
-    return:the average reward when picking action a in state s as a |S| x |A| matrix
+    Compute the average reward when picking action a in state s. It is evaluated as R(s,a) = sum_s' P(s'|s,a) * R(s,a,s')
+    
+    Args:    
+        - nS (int): number of states
+        - nA (int): number of actions
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - reward (np.ndarray): the reward function [nS, nA, nS]
+    return (np.ndarray):the average reward when picking action a in state s as a as [ns, nA] matrix
 """
 def compute_r_s_a(nS, nA, P_mat, reward):
     # Average reward when taking action a in state s, of size |S|x|A|
     r_s_a =np.zeros(shape=(nS, nA))
     for s in range(nS):
         for a in range(nA):
-            avg_rew = 0
             for s_prime in range(nS):
-                avg_rew = avg_rew + P_mat[s*nA + a][s_prime] * reward[s, a, s_prime]
+                r_s_a[s,a] = r_s_a[s,a] + P_mat[s][a][s_prime] * reward[s, a, s_prime]
             #print("Updating state {}, action {}, with {}".format(s, a, avg_rew))
-            r_s_a[s, a] = avg_rew
     return r_s_a
 
 """
-    Compute the probability of moving from state s to state sprime, under policy pi
-        - P_mat: probability transition function
-        - pi: the given policy
-        return: the probability of moving from state s to state sprime under policy pi, as a [nS x nS] matrix 
+    Compute the probability of moving from state s to state sprime, under policy pi. It is evaluated as P(s'|s) = sum_a pi(a|s) * P(s'|s,a)
+    Args:
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - pi (np.ndarray): the given policy [nS, nA]
+
+    return (np.ndarray): the probability of moving from state s to state sprime under policy pi [nS, nS] 
 """
 def compute_p_sprime_s(P_mat, pi):
     nS, nA = pi.shape
@@ -47,17 +50,18 @@ def compute_p_sprime_s(P_mat, pi):
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                P_sprime_s[s][s_prime] = P_sprime_s[s][s_prime] + pi[s, a] * P_mat[s*nA + a][s_prime]
+                P_sprime_s[s][s_prime] = P_sprime_s[s][s_prime] + pi[s, a] * P_mat[s][a][s_prime]
     return P_sprime_s
 
 
 """
-    Compute the discounted state distribution
-        - mu: initial state distribution
-        - P_mat: probability transition function
-        - pi: the given policy
-        - gamma: discount factor
-        return: the discount state distribution as a vector of |S| elements
+    Compute the discounted state distribution as d = (1-gamma) * mu * (I - gamma*P)^-1
+    Args:
+        - mu (np.ndarray): initial state distribution [nS]
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - pi (np.ndarray): the given policy [nS, nA]
+        - gamma (float): discount factor
+    return (np.ndarray): the discount state distribution as a vector [nS]
 """
 def compute_d(mu, P_mat, pi, gamma):
     nS, nA = pi.shape
@@ -68,10 +72,11 @@ def compute_d(mu, P_mat, pi, gamma):
     return d
 
 """
-    Compute the discounted state action distribution under policy pi
-        - mu: initial state distribution
-        - pi: the given policy
-        return: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+    Compute the discounted state action distribution under policy pi as delta = pi * d
+    Args:
+        - d (np.ndarray) : the discounted state distribution as a vector [nS]
+        - pi (np.ndarray): the given policy [nS, nA]    
+    return (np.ndarray): the discount state action distribution under policy pi as [nS, nA]
 """
 def compute_delta(d, pi):
     delta = np.zeros(pi.shape)
@@ -81,15 +86,27 @@ def compute_delta(d, pi):
             delta[s,a] = pi[s, a] * d[s]
     return delta
 
+"""
+    Compute the discounted state action distribution under policy pi as delta = pi * d, computing d implicitly
+    Args:
+        - mu (np.ndarray): initial state distribution [nS]
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - pi (np.ndarray): the given policy [nS, nA]
+        - gamma (float): discount factor
+            
+    return (np.ndarray): the discount state action distribution under policy pi as [nS, nA]
+"""
 def get_delta(mu, P_mat, pi, gamma):
     d = compute_d(mu, P_mat, pi, gamma)
     return compute_delta(d, pi)
 
 """
     Extract the policy from a given state action value function
-        - Q: the state action value function
-        - det: deterministic flag. Whether or not extracting a deterministic policy
-        return the greedy policy according to Q, as an |S|x|A| matrix
+    Args:
+        - Q (np.ndarray): the state action value function [nS, nA]
+        - det (bool): deterministic flag. Whether or not extracting a deterministic policy
+
+    return (np.ndarray): the greedy policy according to Q, as [nS, nA]
 """
 def get_policy(Q, det=True):
     pi = np.zeros(Q.shape)
@@ -99,16 +116,16 @@ def get_policy(Q, det=True):
     else:
         for x in range(Q.shape[0]):
             #pi[x] = softmax(Q[x]) 
-            pi[x] = Q[x]/np.sum(Q[x]) 
-           
-            # Provare normalizzando q sui valori di riga
+            pi[x] = Q[x]/np.sum(Q[x])
     return pi
 
 
 """
     Extract the value function from a given state action value function
-        - Q: the state action value function
-        return the value function as V(s) = max{a in A}{Q(s,a)}
+    Args:
+        - Q (np.ndarray): the state action value function [nS, nA]
+        - det (bool): deterministic flag. Whether or not considering a deterministic policy
+    return (np.ndarray): the value function as V(s) = sum_a Q(s,a) * pi(a|s) [nS]
 """
 def get_value_function(Q, det=True):
     pi = get_policy(Q, det)
@@ -118,22 +135,14 @@ def get_value_function(Q, det=True):
             V[s] = V[s] + Q[s,a]*pi[s,a]
     return V
 
-def rebuild_Q_from_V(nS, nA, P_mat, reward, gamma, V):
-    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
-    Q_test = np.zeros((nS, nA))
-
-    for s in range(nS):
-        for a in range(nA):
-            Q_test[s,a] = r_s_a[s,a] + gamma * np.matmul(P_mat[s*nA +a], np.transpose(V))
-    return Q_test
-
-
 """
-    Compute the expected discounted sum of returns
-        - r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
-        - pi: the given policy
-        - gamma: discount factor
-        return: the expected discounted sum of returns as a scalar value
+    Compute the expected discounted sum of returns as J = sum_s d(s) * sum_a pi(a|s) * R(s,a)
+    Args:    
+        - r_s_a (np.ndarray): the average reward when picking action a in state s [nS, nA]
+        - pi (np.ndarray): the given policy [nS, nA]
+        - d (np.ndarray): the discounted state distribution as a vector [nS]
+        - gamma (float): discount factor
+    return (float): the expected discounted sum of returns as a scalar value
 """
 def compute_j(r_s_a, pi, d, gamma):
     nS, nA = pi.shape
@@ -148,12 +157,15 @@ def compute_j(r_s_a, pi, d, gamma):
     return J
 
 """
-    Utility function to get the expected discounted sum of returns
-        - P_mat: probability transition function
-        - pi: the given policy
-        - reward: the reward function
-        - gamma: discount factor
-        return: the expected discounted sum of returns as a scalar value
+    Utility function to get the expected discounted sum of returns computing d and r_s_a implicitly
+    Args:    
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - pi (np.ndarray): the given policy [nS, nA]
+        - reward (np.ndarray): the reward function [nS, nA, nS]
+        - gamma (float): discount factor
+        - mu (np.ndarray): initial state distribution [nS]
+
+    return (float): the expected discounted sum of returns as a scalar value
 """
 def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
     nS, nA = pi.shape
@@ -162,13 +174,14 @@ def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
     return compute_j(r_s_a, pi, d, gamma)
 
 """
-    Compute the state action nextstate value function U(s, a, s')
-        - nS: number of states
-        - nA: number of actions
-        - r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
-        - gamma: discount factor
-        - V: the state value function
-        return: the state action nextstate value function as an |S|x|A|x|S| matrix
+    Compute the state action nextstate value function U(s, a, s') = R(s,a,s') + gamma * V(s')
+    Args:
+        - nS (int): number of states
+        - nA (int): number of actions
+        - r_s_a (np.ndarray): the average reward when picking action a in state s [nS, nA]
+        - gamma (float): discount factor
+        - V (np.ndarray): the value function [nS]
+    return (np.ndarray): the state action nextstate value function [nS, nA, nS]
 """
 def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
     U = np.zeros((nS, nA, nS))
@@ -178,12 +191,14 @@ def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
     return U
 
 """
-    Utility function to get the state action nextstate value function U(s, a, s')
-        - P_mat: probability transition function
-        - reward: the reward function
-        - gamma: discount factor
-        - Q: the state action value function
-        return: the state action nextstate value function as an |S|x|A|x|S| matrix
+    Utility function to get the state action nextstate value function U(s, a, s') = R(s,a,s') + gamma * V(s')
+    Args:
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - reward (np.ndarray): the reward function [nS, nA, nS]
+        - gamma (float): discount factor
+        - Q (np.ndarray): the state action value function [nS, nA]
+        - det (bool): deterministic flag. Whether or not considering a deterministic policy
+    return (np.ndarray): the state action nextstate value function [nS, nA, nS]
 """
 def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True):
     nS, nA = Q.shape
@@ -191,6 +206,13 @@ def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True)
     V = get_value_function(Q, det)
     return compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V)
 
+"""
+    Extract the state action value function from a given state action nextstate value function Q = sum_s' P(s'|s,a) * U(s,a,s')
+    Args:
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - U (np.ndarray): state action next state value function as[nS, nA, nS]
+    return (np.ndarray): the state action value function [nS, nA] 
+"""
 def rebuild_Q_from_U(P_mat, U):
     
     nS, nA, _ = U.shape
@@ -199,7 +221,7 @@ def rebuild_Q_from_U(P_mat, U):
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s*nA + a][s_prime]
+                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s][a][s_prime]
     
     return Q_test
 
@@ -296,7 +318,7 @@ def compute_relative_model_advantage_function(P_mat_prime, A):
     A_tau_prime = np.zeros((nS, nA))
     for s in range(nS):
         for a in range(nA):
-            A_tau_prime[s, a] = np.matmul(P_mat_prime[s*nA + a], np.transpose(A[s, a, :]))
+            A_tau_prime[s, a] = np.matmul(P_mat_prime[s][a], np.transpose(A[s, a, :]))
     return A_tau_prime
 
 """

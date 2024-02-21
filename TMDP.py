@@ -26,7 +26,6 @@ class TMDP(DiscreteEnv):
             xi (numpy.ndarray): state teleport probability distribution
             tau (float, optional): teleport probability. Default to 0.
             gamma: discount factor. Default to 0.99
-            seed (float, optional): pseudo-random generator seed. Default to None.
     """
     def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=0.99, seed=None):
         
@@ -43,7 +42,6 @@ class TMDP(DiscreteEnv):
         self.P_mat = env.P_mat
         #: allowed_actions (list): List of allowed action for the defined problem  
         self.allowed_actions = env.allowed_actions
-
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
         super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma, seed)
@@ -89,7 +87,7 @@ class TMDP(DiscreteEnv):
             r = self.reward[self.s, a, s_prime]
             self.s = np.array([s_prime]).ravel()
             # In this case the done flag signal that a teleport happened
-            return self.s, r, {"done":r != 0, "teleport": True}, self.P_mat_tau[s, a, s_prime]
+            return self.s, r, {"done":r[0] != 0, "teleport": True}, self.P_mat_tau[s, a, s_prime]
         else:
             #print("Following regular probability transition function")
             

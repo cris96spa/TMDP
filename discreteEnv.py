@@ -59,7 +59,6 @@ class DiscreteEnv(Env):
 
         #: observation_space (gym.spaces.discrete.Discrete): discrete state space
         self.h = spaces.Discrete(self.nS)
-
         self.seed(seed)
         self.reset()
     
@@ -95,6 +94,8 @@ class DiscreteEnv(Env):
     """
     def step(self, a):
         
+        assert self.action_space.contains(a), "Action {} is not valid.".format(a)
+
         # Get the list of possible transitions from the current state, given the action a
         transitions = self.P[self.s[0]][a]
         # Get the probability of moving from s to every possible next state, while picking action a
@@ -106,4 +107,4 @@ class DiscreteEnv(Env):
         # update last action
         self.lastaction = a
         
-        return self.s, r, {"done":done}, p
+        return self.s, r.ravel(), {"done":done}, p
