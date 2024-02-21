@@ -4,8 +4,8 @@ from scipy.special import softmax
 
 """
     Sample from categorical distribution
-        @prob_n : probability distribution vector
-        @np_random: random number generator
+        - prob_n : probability distribution vector
+        - np_random: random number generator
         return: a categorical sampling from the given probability distribution
 """
 def categorical_sample(prob_n, np_random):
@@ -17,10 +17,10 @@ def categorical_sample(prob_n, np_random):
 
 """
     Compute the average reward when picking action a in state s
-    @nS: number of states
-    @nA: number of actions
-    @P_mat: probability transition function
-    @reward: the reward function
+        - nS: number of states
+        - nA: number of actions
+        - P_mat: probability transition function
+        - reward: the reward function
     return:the average reward when picking action a in state s as a |S| x |A| matrix
 """
 def compute_r_s_a(nS, nA, P_mat, reward):
@@ -37,8 +37,8 @@ def compute_r_s_a(nS, nA, P_mat, reward):
 
 """
     Compute the probability of moving from state s to state sprime, under policy pi
-        @P_mat: probability transition function
-        @pi: the given policy
+        - P_mat: probability transition function
+        - pi: the given policy
         return: the probability of moving from state s to state sprime under policy pi, as a [nS x nS] matrix 
 """
 def compute_p_sprime_s(P_mat, pi):
@@ -53,10 +53,10 @@ def compute_p_sprime_s(P_mat, pi):
 
 """
     Compute the discounted state distribution
-        @mu: initial state distribution
-        @P_mat: probability transition function
-        @pi: the given policy
-        @gamma: discount factor
+        - mu: initial state distribution
+        - P_mat: probability transition function
+        - pi: the given policy
+        - gamma: discount factor
         return: the discount state distribution as a vector of |S| elements
 """
 def compute_d(mu, P_mat, pi, gamma):
@@ -69,8 +69,8 @@ def compute_d(mu, P_mat, pi, gamma):
 
 """
     Compute the discounted state action distribution under policy pi
-        @mu: initial state distribution
-        @pi: the given policy
+        - mu: initial state distribution
+        - pi: the given policy
         return: the discount state action distribution under policy pi as a vector of |S|x|A| elements
 """
 def compute_delta(d, pi):
@@ -87,8 +87,8 @@ def get_delta(mu, P_mat, pi, gamma):
 
 """
     Extract the policy from a given state action value function
-        @Q: the state action value function
-        @det: deterministic flag. Whether or not extracting a deterministic policy
+        - Q: the state action value function
+        - det: deterministic flag. Whether or not extracting a deterministic policy
         return the greedy policy according to Q, as an |S|x|A| matrix
 """
 def get_policy(Q, det=True):
@@ -107,7 +107,7 @@ def get_policy(Q, det=True):
 
 """
     Extract the value function from a given state action value function
-        @Q: the state action value function
+        - Q: the state action value function
         return the value function as V(s) = max{a in A}{Q(s,a)}
 """
 def get_value_function(Q, det=True):
@@ -130,9 +130,9 @@ def rebuild_Q_from_V(nS, nA, P_mat, reward, gamma, V):
 
 """
     Compute the expected discounted sum of returns
-        @r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
-        @pi: the given policy
-        @gamma: discount factor
+        - r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
+        - pi: the given policy
+        - gamma: discount factor
         return: the expected discounted sum of returns as a scalar value
 """
 def compute_j(r_s_a, pi, d, gamma):
@@ -149,10 +149,10 @@ def compute_j(r_s_a, pi, d, gamma):
 
 """
     Utility function to get the expected discounted sum of returns
-        @P_mat: probability transition function
-        @pi: the given policy
-        @reward: the reward function
-        @gamma: discount factor
+        - P_mat: probability transition function
+        - pi: the given policy
+        - reward: the reward function
+        - gamma: discount factor
         return: the expected discounted sum of returns as a scalar value
 """
 def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
@@ -163,11 +163,11 @@ def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
 
 """
     Compute the state action nextstate value function U(s, a, s')
-        @nS: number of states
-        @nA: number of actions
-        @r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
-        @gamma: discount factor
-        @V: the state value function
+        - nS: number of states
+        - nA: number of actions
+        - r_s_a: the average reward when picking action a in state s as an |S| x |A| matrix
+        - gamma: discount factor
+        - V: the state value function
         return: the state action nextstate value function as an |S|x|A|x|S| matrix
 """
 def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
@@ -179,10 +179,10 @@ def compute_state_action_nextstate_value_function(nS, nA, r_s_a, gamma, V):
 
 """
     Utility function to get the state action nextstate value function U(s, a, s')
-        @P_mat: probability transition function
-        @reward: the reward function
-        @gamma: discount factor
-        @Q: the state action value function
+        - P_mat: probability transition function
+        - reward: the reward function
+        - gamma: discount factor
+        - Q: the state action value function
         return: the state action nextstate value function as an |S|x|A|x|S| matrix
 """
 def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True):
@@ -205,10 +205,10 @@ def rebuild_Q_from_U(P_mat, U):
 
 """
     Compute the state policy advantage function A(s,a)
-        @nS: number of states
-        @nA: number of actions
-        @Q: state action value function
-        @V: state value function
+        - nS: number of states
+        - nA: number of actions
+        - Q: state action value function
+        - V: state value function
         return: the policy advantage function as an |S|x|A| matrix
 """
 def compute_policy_advantage_function(nS, nA, Q, V):
@@ -220,8 +220,8 @@ def compute_policy_advantage_function(nS, nA, Q, V):
 
 """
     Utility function to get the policy advantage function A(s,a)
-        @Q: the state action value function
-        @det: deterministic flag. Whether or not extracting a deterministic policy
+        - Q: the state action value function
+        - det: deterministic flag. Whether or not extracting a deterministic policy
         return: the policy advantage function as an |S|x|A| matrix
 """
 def get_policy_advantage_function(Q, det=True):
@@ -231,8 +231,8 @@ def get_policy_advantage_function(Q, det=True):
 
 """
     Compute the model advantage function A(s, a, s')
-        @Q: the state action value function
-        @U: state action next state value function as an |S|x|A|x|S| matrix
+        - Q: the state action value function
+        - U: state action next state value function as an |S|x|A|x|S| matrix
         return: the model advantage function as an |S|x|A|x|S| matrix
 """
 def compute_model_advantage_function(U, Q):
@@ -246,11 +246,11 @@ def compute_model_advantage_function(U, Q):
 
 """
     Utility function to get the model advantage function A(s, a, s')
-        @P_mat: probability transition function
-        @reward: the reward function
-        @gamma: discount factor
-        @Q: the state action value function
-        @det: deterministic flag. Whether or not extracting a deterministic policy
+        - P_mat: probability transition function
+        - reward: the reward function
+        - gamma: discount factor
+        - Q: the state action value function
+        - det: deterministic flag. Whether or not extracting a deterministic policy
         return: the model advantage function as an |S|x|A|x|S| matrix
 """
 def get_model_advantage_function(P_mat, reward, gamma, Q, det=True):
@@ -260,8 +260,8 @@ def get_model_advantage_function(P_mat, reward, gamma, Q, det=True):
 
 """
     Compute the relative policy advantage function A_pi_pi_prime(s)
-        @pi_prime: the new policy to be compared
-        @A: the policy advantage function as an |S|x|A| matrix
+        - pi_prime: the new policy to be compared
+        - A: the policy advantage function as an |S|x|A| matrix
         return: the model advantage function as an |S| vector
 """
 def compute_relative_policy_advantage_function(pi_prime, A):
@@ -275,9 +275,9 @@ def compute_relative_policy_advantage_function(pi_prime, A):
 
 """
     Utility function to get the relative policy advantage function A_pi_pi_prime(s)
-        @Q: the state action value function
-        @pi_prime: the new policy to be compared
-        @det: deterministic flag. Whether or not extracting a deterministic policy
+        - Q: the state action value function
+        - pi_prime: the new policy to be compared
+        - det: deterministic flag. Whether or not extracting a deterministic policy
         return: the relative policy advantage function as an |S| vector
 """
 def get_relative_policy_advantage_function(Q, pi_prime, det=True):
@@ -287,8 +287,8 @@ def get_relative_policy_advantage_function(Q, pi_prime, det=True):
 
 """
     Compute the relative model advantage function A_tau_tau_prime(s,a)
-        @P_mat_prime: the probability transition function to be compared
-        @A: the model advantage function as an |S|x|A|x|S| matrix
+        - P_mat_prime: the probability transition function to be compared
+        - A: the model advantage function as an |S|x|A|x|S| matrix
         return: the relative model advantage function as an |S|x|A| matrix
 """
 def compute_relative_model_advantage_function(P_mat_prime, A):
@@ -302,9 +302,9 @@ def compute_relative_model_advantage_function(P_mat_prime, A):
 """
     Compute the relative model advantage function \hat{A}_tau_tau_prime(s,a)
     N.B. to get the actual relative model advantage function you have to multiply times (\tau - \tau')
-        @P_mat_prime: the probability transition function to be compared
-        @xi: state teleport probability distribution
-        @U: state action next state value function as an |S|x|A|x|S| matrix
+        - P_mat_prime: the probability transition function to be compared
+        - xi: state teleport probability distribution
+        - U: state action next state value function as an |S|x|A|x|S| matrix
         return: the relative model advantage function hat as an |S|x|A| matrix
 """
 def compute_relative_model_advantage_function_hat(P_mat, xi, U):
@@ -318,8 +318,8 @@ def compute_relative_model_advantage_function_hat(P_mat, xi, U):
 
 """
     Compute the discounted distribution relative model advantage function A_tau_tau_prime
-        @A: the relative model advantage function as an |S|x|A| matrix
-        @delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+        - A: the relative model advantage function as an |S|x|A| matrix
+        - delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
         return: the discounted distribution relative model advantage function as a scalar
 """
 def compute_discounted_distribution_relative_model_advantage_function(A, delta):
@@ -333,10 +333,10 @@ def compute_discounted_distribution_relative_model_advantage_function(A, delta):
 """
     Compute the discounted distribution relative model advantage function hat \hat{A}^_tau_tau_prime
         N.B. to get the actual discounted distribution relative model advantage function you have to multiply times (\tau - \tau')
-        @P_mat: probability transition function
-        @xi: state teleport probability distribution
-        @U: state action next state value function as an |S|x|A|x|S| matrix
-        @delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
+        - P_mat: probability transition function
+        - xi: state teleport probability distribution
+        - U: state action next state value function as an |S|x|A|x|S| matrix
+        - delta: the discount state action distribution under policy pi as a vector of |S|x|A| elements
         return: the discounted distribution relative model advantage function hat as a scalar
 """
 def compute_discounted_distribution_relative_model_advantage_function_hat(A_tau_hat, delta):

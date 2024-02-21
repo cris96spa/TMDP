@@ -116,7 +116,7 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
     nS, nA = Q.shape
     visits = np.zeros(nS)
     dec_alpha = np.ones(nS)*alpha
-    # Q_learning main loop
+    # Q_learning main looph
     while m < M:
         # Learning rate initialization
         visits[s] = visits[s]+1

@@ -91,7 +91,7 @@ class DiscreteEnv(Env):
         Args:
             -a: the action to be executed
         return:
-            next state, the immediate reward, termination flag, the probability of that specific transition
+            next state, the immediate reward, done flag, the probability of that specific transition
     """
     def step(self, a):
         
@@ -100,10 +100,10 @@ class DiscreteEnv(Env):
         # Get the probability of moving from s to every possible next state, while picking action a
         probabilities = [t[0] for t in transitions]
         sample = categorical_sample(probabilities, self.np_random)
-        p, s, r, terminal = transitions[sample]
+        p, s, r, done = transitions[sample]
         # update the current state
         self.s = np.array([s]).ravel()
         # update last action
         self.lastaction = a
         
-        return self.s, r, terminal, p
+        return self.s, r, {"done":done}, p
