@@ -16,7 +16,7 @@ from model_functions import *
     return: Q* estimated as an iterative application of the bellman optimality operator until |T*(Q)-Q|<=epsilon
 """
 def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
-    r_s_a = compute_r_s_a(nS, nA, P_mat, reward)
+    r_s_a = compute_r_s_a(P_mat, reward)
     Q = np.zeros((nS, nA))
     iterations = 0
     loop = True
@@ -151,7 +151,7 @@ def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debu
             # Compute the state value function
             V = get_value_function(Q) 
             # Compute the expected reward when picking action a in state s
-            r_s_a = compute_r_s_a(nS, nA, env.P_mat_tau, env.reward)
+            r_s_a = compute_r_s_a(env.P_mat_tau, env.reward)
             # Compute the state action next-state value function U_tau(s,a,s') = R(s,a) + \gamma*V_tau(s')
             U = compute_state_action_nextstate_value_function(nS, nA, r_s_a, env.gamma, V)
             # Rebuild Q using U as Q_tau(s,a) = \sum{s' \in S}P_tau(s'|s,a)*U_tau(s,a,s')
