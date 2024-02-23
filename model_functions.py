@@ -212,14 +212,14 @@ def get_state_action_nextstate_value_function(P_mat, reward, gamma, Q, det=True)
 """
 def rebuild_Q_from_U(P_mat, U):
     nS, nA, _ = U.shape
-    Q_test = np.zeros((nS, nA))
+    Q = np.zeros((nS, nA))
     
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                Q_test[s, a] = Q_test[s,a] +  U[s, a, s_prime] * P_mat[s][a][s_prime]
+                Q[s, a] = Q[s,a] +  U[s, a, s_prime] * P_mat[s][a][s_prime]
     
-    return Q_test
+    return Q
 
 """
     Compute the state policy advantage function A(s,a) = Q(s,a) - V(s)
@@ -230,11 +230,11 @@ def rebuild_Q_from_U(P_mat, U):
 """
 def compute_policy_advantage_function(Q, V):
     nS, nA = Q.shape
-    A = np.zeros((nS, nA))
+    pol_adv = np.zeros((nS, nA))
     for s in range(nS):
         for a in range(nA):
-            A[s, a] = Q[s,a] - V[s]
-    return A
+            pol_adv[s, a] = Q[s,a] - V[s]
+    return pol_adv
 
 """
     Utility function to get the policy advantage function extracting V implicitly. A = Q - V
@@ -256,13 +256,13 @@ def get_policy_advantage_function(Q, det=True):
 """
 def compute_model_advantage_function(U, Q):
     nS, nA = Q.shape
-    A = np.zeros((nS, nA, nS))
+    model_adv = np.zeros((nS, nA, nS))
 
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                A[s, a, s_prime] = U[s, a, s_prime] - Q[s, a]
-    return A
+                model_adv[s, a, s_prime] = U[s, a, s_prime] - Q[s, a]
+    return model_adv
 
 """
     Utility function to get the model advantage function computing U implicitly. A = U - Q
@@ -288,11 +288,11 @@ def get_model_advantage_function(P_mat, reward, gamma, Q, det=True):
 """
 def compute_relative_policy_advantage_function(pi_prime, A):
     nS, nA = pi_prime.shape
-    A_pi_prime = np.zeros(nS)
+    rel_pol_adv = np.zeros(nS)
     for s in range(nS):
         for a in range(nA):
-            A_pi_prime[s] = A_pi_prime[s] + pi_prime[s, a]*A[s, a]
-    return A_pi_prime
+            rel_pol_adv[s] = rel_pol_adv[s] + pi_prime[s, a]*A[s, a]
+    return rel_pol_adv
 
 
 """
@@ -316,14 +316,14 @@ def get_relative_policy_advantage_function(Q, pi_prime, det=True):
         - det (bool): deterministic flag. Whether or not extracting a deterministic policy
     return (np.ndarray): the relative policy advantage function [nS]
 """
-def get_relative_policy_advantage_function_from_delta_p(Q, pi_prime, det=True):
+def get_relative_policy_advantage_function_from_delta_policy(Q, pi_prime, det=True):
     nS, nA = pi_prime.shape
-    A_pi_prime = np.zeros(nS)
+    rel_pol_adv = np.zeros(nS)
     pi = get_policy(Q, det)
     for s in range(nS):
         for a in range(nA):
-            A_pi_prime[s] += (pi_prime[s, a] - pi[s,a]) * Q[s,a]
-    return A_pi_prime
+            rel_pol_adv[s] += (pi_prime[s, a] - pi[s,a]) * Q[s,a]
+    return rel_pol_adv
 
 
 
@@ -366,8 +366,8 @@ def compute_relative_model_advantage_function_hat(P_mat, xi, U):
         - P_mat (np.ndarray): probability transition function of the original problem, with tau=0 [nS, nA, nS]
         - xi (np.ndarray): state teleport probability distribution [nS]
         - U (np.ndarray): state action next state value function [nS, nA, nS]
-        - tau (float): discount factor
-        - tau_prime (float): discount factor
+        - tau (float): teleport probability
+        - tau_prime (float): new teleport probability
     return (np.ndarray): the relative model advantage function [nS, nA]
 """
 def compute_relative_model_advantage_function_from_delta_tau(P_mat, xi, U, tau, tau_prime):
@@ -382,12 +382,12 @@ def compute_relative_model_advantage_function_from_delta_tau(P_mat, xi, U, tau, 
     return (float): the discounted distribution relative model advantage function as a scalar
 """
 def compute_discounted_distribution_relative_model_advantage_function(A, delta):
-    expected_A = 0
+    dis_rel_model_adv = 0
     nS, nA = delta.shape
     for s in range(nS):
         for a in range(nA):
-            expected_A = expected_A + A[s, a]* delta[s, a]
-    return expected_A
+            dis_rel_model_adv = dis_rel_model_adv + A[s, a]* delta[s, a]
+    return dis_rel_model_adv
 
 """
     Compute the discounted distribution relative model advantage function hat \mathcal{A}_tau_tauprime = sum_s sum_a delta(s,a) * \hat{A}_tau(s,a)
@@ -406,13 +406,13 @@ def compute_discounted_distribution_relative_model_advantage_function_hat(A_tau_
     return dis_rel_model_adv
 
 """
-    Compute the relative model advantage function A_tau_tau_prime(s,a) = (tau - tau') * \hat{A}_tau(s,a).
+    Compute the discounted relative model advantage function dis_model_adv(s,a) = (tau - tau') * \hat{A}_tau(s,a).
     Args:
         - P_mat (np.ndarray): probability transition function of the original problem, with tau=0 [nS, nA, nS]
         - xi (np.ndarray): state teleport probability distribution [nS]
         - U (np.ndarray): state action next state value function [nS, nA, nS]
-        - tau (float): discount factor
-        - tau_prime (float): discount factor
+        - tau (float): teleport probability
+        - tau_prime (float): new teleport probability
     return (np.ndarray): the relative model advantage function [nS, nA]
 """
 def compute_discounted_distribution_relative_model_advantage_function_from_delta_tau(A_tau_hat, delta, tau, tau_prime):
@@ -421,37 +421,56 @@ def compute_discounted_distribution_relative_model_advantage_function_from_delta
 
 # Here
 
-
-"""
-    Compute the expected difference between two probability transition functions P_tau and P_tau_prime
+""" 
+    Compute the expected value of the difference among two probability distribution over (s,a)~delta.
+    It works in two ways:
+        - if P_mat_tau and P_mat_tauprime have the same shape, it computes the expected difference among the two probability transition functions
+        - if P_mat_tauprime has the same shape of P_mat_tau.shape[0], meaning that we are comparing P_mat_tau with a probability vector, it computes the expected value of the difference among each row of P_mat_tau and the probability vector P_mat_tauprime
     Args:
         - P_mat_tau (np.ndarray): probability transition function [nS, nA, nS]
-        - P_mat_tau_prime (np.ndarray): probability transition function [nS, nA, nS]
-    return (float): the expected difference between the two probability transition functions
+        - P_mat_tauprime (np.ndarray): probability transition function [nS, nA, nS] or probability vector [nS]
+        - delta (np.ndarray): the discount state action distribution under policy pi [nS, nA]
+    return (float): the expected difference among the two probability transition functions
 """
-def get_expected_difference_transition_models(P_mat_tau, P_mat_tau_prime):
-    assert P_mat_tau.shape == P_mat_tau_prime.shape, "The two probability transition functions must have the same shape. Got P_mat_tau:{} and P_mat:{}".format(P_mat_tau.shape, P_mat_tau_prime.shape)
+def get_expected_difference_transition_models(P_mat_tau, P_mat_tauprime, delta):
     de = 0
-    nS_nA = P_mat_tau.shape[0]
-    for i in range(nS_nA):
-        de = de + np.linalg.norm(P_mat_tau_prime[i] - P_mat_tau[i], 1)
-    return de/nS_nA
+    nS, nA, _ = P_mat_tau.shape
+    if P_mat_tau.shape == P_mat_tauprime.shape:
+        for s in range(nS):
+            for a in range(nA):
+                de += np.linalg.norm(P_mat_tauprime[s, a] - P_mat_tau[s, a], ord=1) * delta[s,a]
+    elif P_mat_tau.shape[0] == P_mat_tauprime.shape[0]:
+         for s in range(nS):
+            for a in range(nA):
+                de += np.linalg.norm(P_mat_tau[s,a] - P_mat_tauprime, ord=1) * delta[s,a]
+    else:
+        raise ValueError('P_mat_tau and P_mat_tauprime have incompatible shapes')
+    return de
 
 """
-    Compute the superior difference between two probability transition functions P_tau and P_tau_prime
+    Compute the superior difference among two probability transition functions.
+    It works in two ways:
+        - if P_mat_tau and P_mat_tauprime have the same shape, it computes the superior difference among the two probability transition functions
+        - if P_mat_tauprime has the same shape of P_mat_tau.shape[0], meaning that we are comparing P_mat_tau with a probability vector, it computes the superior difference among each row of P_mat_tau and the probability vector P_mat_tauprime
     Args:
         - P_mat_tau (np.ndarray): probability transition function [nS, nA, nS]
-        - P_mat_tau_prime (np.ndarray): probability transition function [nS, nA, nS]
-    return (float): the superior difference between the two probability transition functions
+        - P_mat_tauprime (np.ndarray): probability transition function [nS, nA, nS] or probability vector [nS]
+    return (float): the superior difference among the two probability transition functions
 """
-def get_sup_difference_transition_models(P_mat_tau, P_mat_tau_prime):
-    assert P_mat_tau.shape == P_mat_tau_prime.shape, "The two probability transition functions must have the same shape. Got P_mat_tau:{} and P_mat:{}".format(P_mat_tau.shape, P_mat_tau_prime.shape)
-    de = -np.inf
-    nS_nA = P_mat_tau.shape[0]
-    for i in range(nS_nA):
-        norm = np.linalg.norm(P_mat_tau_prime[i] - P_mat_tau[i], 1)
-        if norm > de:
-            de = norm
+def get_sup_difference_transition_models(P_mat_tau, P_mat_tauprime):
+    nS, nA, _ = P_mat_tau.shape
+
+    # Here we are considering two different probability transition functions, with the same shape. Nominally, P_tau and P_tau_prime
+    if P_mat_tau.shape == P_mat_tauprime.shape:
+        return np.max(np.abs(P_mat_tau - P_mat_tauprime))
+    
+    # Here we are considering the case in which we ar compering the probability transition function of the original problem, with the state teleport probability distribution xi
+    elif P_mat_tau.shape[0] == P_mat_tauprime.shape[0]:
+        Xi = np.tile(P_mat_tauprime, (nA, nS)).T
+        Xi = Xi.reshape((nS, nA, nS))
+        return np.max(np.abs(P_mat_tau - Xi))
+    else:
+        raise ValueError('P_mat_tau and P_mat_tauprime have incompatible shapes')
     return de
 
 """
@@ -467,44 +486,95 @@ def get_sup_difference_q(Q):
         for a in range(nA):
             for s1 in range(nS):
                 for a1 in range(nA):
-                    diff = abs(Q[s,a]-Q[s1,a1])
+                    diff = np.abs(Q[s,a]-Q[s1,a1])
                     if diff > sup:
                         sup = diff
     return sup
     
 
 """
-    Compute the performance improvement lower bound as l_b = A_hat*(tau-tau_1)/(1-gamma) - 2*gamma^2*Delta_Q*(tau-tau_1)^2/(2*(1-gamma)^2)
+    Compute the performance improvement lower bound as lb = dis_rel_model_adv/(1-gamma) - 2*gamma^2*(tau-tauprime)^2*de*dq*dinf/(2*(1-gamma)^2) 
+    Where:
+        - dis_rel_model_adv = sum_{s,a} delta(s,a) * rel_model_adv(s,a)
+        - de = \sum_{s,a} delta(s,a) * ||P_tau_prime(s,a) - P_tau(s,a)||_1
+        - dq = sup_{s,a,s', a'} |Q_tau(s,a) - Q_tau(s',a')|
+        - dinf = sup_{s,a} ||P_tau_prime(s,a) - P_tau(s,a)||_1
     Args:
-        - A_hat (float): the discounted distribution relative model advantage function hat
+        - P_mat_tau (np.ndarray): probability transition function [nS, nA, nS]
+        - P_mat_tauprime (np.ndarray): new probability transition function [nS, nA, nS]
+        - reward (np.ndarray): the reward function [nS, nA, nS]
         - gamma (float): discount factor
-        - Delta_Q (float): the superior difference between any two elements of the state action value function Q
-        - tau (float): discount factor
-        - tau_1 (float): discount factor
-    return (float): the performance improvement lower bound
+        - tau (float): teleport probability
+        - tau_prime (float): new teleport probability
+        - Q (np.ndarray): the state action value function [nS, nA]
+        - mu (np.ndarray): initial state distribution [nS]
+        - det (bool): deterministic flag. Whether or not extracting a deterministic policy
+    return (float): the performance improvement lower bound    
 """
+def get_performance_improvement_lower_bound(P_mat_tau, P_mat_tauprime , reward, gamma, tau, tau_prime, Q, mu, det=True):
+    # Compute the advantage
+    pi = get_policy(Q, det)
+    delta = get_delta(mu, P_mat_tau, pi, gamma)
+
+    model_adv = get_model_advantage_function(P_mat_tau, reward, gamma, Q, det)
+    rel_adv = compute_relative_model_advantage_function(P_mat_tauprime, model_adv)
+    dis_rel_model_adv = compute_discounted_distribution_relative_model_advantage_function(rel_adv, delta)
+    adv = dis_rel_model_adv/(1-gamma)
+
+    # Compute the dissimilarity penalization
+    dq = get_sup_difference_q(Q)
+    de = get_expected_difference_transition_models(P_mat_tau, P_mat_tauprime, delta)
+    dinf = get_sup_difference_transition_models(P_mat_tau, P_mat_tauprime)
+    diss_pen = gamma**2*(tau - tau_prime)**2*dq*de*dinf/(2*(1-gamma)**2)
+
+    return adv - diss_pen
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def compute_performance_improvement_lower_bound(A_hat, gamma, Delta_Q, tau:float, tau_1:float):
     return A_hat*(tau-tau_1)/(1-gamma) - 2*gamma**2*Delta_Q*(tau-tau_1)**2/(2*(1-gamma)**2)
 
-"""
-    Get the optimal tau prime as tau' = tau - A_hat*(1-gamma)/(4*gamma^2*Delta_Q)
-    Args:
-        - A_hat (float): the discounted distribution relative model advantage function hat
-        - gamma (float): discount factor
-        - tau (float): discount factor
-        - Delta_Q (float): the superior difference between any two elements of the state action value function Q
-    return (float): the optimal tau prime
-"""
+
 def compute_tau_prime(A_hat, gamma, tau, Delta_Q):
     return tau - A_hat*(1-gamma)/(4*gamma**2*Delta_Q)
 
-"""
-    Compute the optimal lower bound as A_hat^2/(8*gamma^2*Delta_Q)
-    Args:
-        - A_hat (float): the discounted distribution relative model advantage function hat
-        - gamma (float): discount factor
-        - Delta_Q (float): the superior difference between any two elements of the state action value function Q
-    return (float): the optimal lower bound
-"""
+
 def compute_optimal_lower_bound(A_hat, gamma, Delta_Q):
     return A_hat**2/((8*gamma**2*Delta_Q))
