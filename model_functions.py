@@ -167,7 +167,6 @@ def compute_j(r_s_a, pi, d, gamma):
     return (float): the expected discounted sum of returns as a scalar value
 """
 def get_expected_avg_reward(P_mat, pi, reward, gamma, mu):
-    nS, nA = pi.shape
     r_s_a = compute_r_s_a(P_mat, reward)
     d = compute_d(mu, P_mat, pi, gamma)
     return compute_j(r_s_a, pi, d, gamma)
@@ -530,51 +529,31 @@ def get_performance_improvement_lower_bound(P_mat_tau, P_mat_tauprime , reward, 
     return adv - diss_pen
 
 
+"""
+    Compute the optimal teleport probability tau_prime that maximizes the performance improvement lower bound
+    Args:
+        - P_mat_tau (np.ndarray): probability transition function [nS, nA, nS]
+        - reward (np.ndarray): the reward function [nS, nA, nS]
+        - gamma (float): discount factor
+        - tau (float): teleport probability
+        - Q (np.ndarray): the state action value function [nS, nA]
+        - mu (np.ndarray): initial state distribution [nS]
+        - xi (np.ndarray): state teleport probability distribution [nS]
+        - det (bool): deterministic flag. Whether or not extracting a deterministic policy
+    return (float): the optimal teleport probability tau_prime that maximizes the performance improvement lower bound
+"""
+def  get_optimal_tauprime(P_mat_tau, reward, gamma, tau, Q, mu, xi, det=True):
 
+    # Compute the discounted relative model advantage hat
 
+    U = get_state_action_nextstate_value_function(P_mat_tau, reward, gamma, Q, det)
+    rel_model_adv_hat = compute_relative_model_advantage_function_hat(P_mat_tau, xi, U)
+    pi = get_policy(Q, det)
+    delta = get_delta(mu, P_mat_tau, pi, gamma)
+    dis_rel_model_adv_hat = compute_discounted_distribution_relative_model_advantage_function_hat(rel_model_adv_hat, delta)
 
+    dq = get_sup_difference_q(Q)
+    de = get_expected_difference_transition_models(P_mat_tau, xi, delta)
+    dinf = get_sup_difference_transition_models(P_mat_tau, xi)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def compute_performance_improvement_lower_bound(A_hat, gamma, Delta_Q, tau:float, tau_1:float):
-    return A_hat*(tau-tau_1)/(1-gamma) - 2*gamma**2*Delta_Q*(tau-tau_1)**2/(2*(1-gamma)**2)
-
-
-def compute_tau_prime(A_hat, gamma, tau, Delta_Q):
-    return tau - A_hat*(1-gamma)/(4*gamma**2*Delta_Q)
-
-
-def compute_optimal_lower_bound(A_hat, gamma, Delta_Q):
-    return A_hat**2/((8*gamma**2*Delta_Q))
+    return tau - dis_rel_model_adv_hat*(1-gamma)/(2*gamma**2*dq*de*dinf)
