@@ -91,7 +91,7 @@ class TMDP(DiscreteEnv):
         else:
             #print("Following regular probability transition function")
             
-            s_prime, reward, flags, prob = super(TMDP, self).step(a)
+            s_prime, reward, flags, _ = super(TMDP, self).step(a)
             flags["teleport"] = False
             return s_prime, reward, flags, self.P_mat_tau[s, a, s_prime]
 

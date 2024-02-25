@@ -1,21 +1,22 @@
 import numpy as np
 from gym import Env
 from distanceMeasure import *
+from DiscreteEnv import DiscreteEnv
 from scipy.special import softmax
 from model_functions import *
 
 
 """
-    Compute Q* using bellman optimality operator iteratively
-        - nS: number of states
-        - nA: number of actions
-        - P_mat: probability transition function
-        - reward: reward function
-        - epsilon: stopping threshold value
-        - gamma: discount factor
-    return: Q* estimated as an iterative application of the bellman optimality operator until |T*(Q)-Q|<=epsilon
+    Compute the optimal state action value function using the Bellman optimality operator as Q*(s,a) = R(s,a) + gamma *sum_{s' in S}P(s'|s,a) * max_{a' in A}Q*(s',a')
+    Args:    
+        - P_mat (ndarray): transition probability matrix [nS, nA, nS]
+        - reward (ndarray): reward function [nS, nA]
+        - gamma (float): discount factor
+        - threshold (float): convergence threshold
+    return (dict): the optimal state action value function and the number of iterations needed to converge
 """
-def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
+def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
+    nS, nA, _ = P_mat.shape
     r_s_a = compute_r_s_a(P_mat, reward)
     Q = np.zeros((nS, nA))
     iterations = 0
@@ -24,27 +25,24 @@ def bellman_optimal_q(nS, nA, P_mat, reward, epsilon, gamma):
         Q_old = Q.copy()
         for s in range(nS):
             for a in range(nA):
-                sum = 0
-                a_star = 0
-                for s_prime in range(nS):
-                    a_star = np.argmax(Q[s_prime])
-                    sum = sum +  P_mat[s][a][s_prime]*Q[s_prime, a_star]
-                Q[s,a] = r_s_a[s, a] + gamma*sum
-        delta_q = np.linalg.norm(Q - Q_old, np.inf)
-        iterations = iterations + 1 
-        if delta_q <= epsilon:
+                Q[s,a] = r_s_a[s,a] + gamma * np.dot(P_mat[s,a,:], np.max(Q, axis=1))
+        iterations += 1 
+        epsilon = np.linalg.norm(Q - Q_old, np.inf)
+        if epsilon <= threshold:
             loop = False
-    return Q, iterations
+    return {"Q": Q, iterations: iterations}
 
 """
     Epsilon greedy action selection
-        - s: current state
-        - Q: current state action value function
-        - eps: exploration/exploration factor
-        - allowed_actions: actions allowed in the given state s
-        return an epsilon greedy action choice
+    Args:
+        - s (int): current state
+        - Q (ndarray): state action value function
+        - eps (float): exploration rate
+        - allowed_actions (ndarray): array of allowed actions
+    return (int): the action to be taken
 """
 def eps_greedy(s, Q, eps, allowed_actions):
+
     # epsilon times pick an action uniformly at random (exploration)
     if np.random.rand() <= eps:
         actions = np.where(allowed_actions)
@@ -65,36 +63,132 @@ def eps_greedy(s, Q, eps, allowed_actions):
     return a
 
 """
-    SARSA algorithm implementation
-        - env: environment object
-        - s: current state
-        - a: first action to be taken
-        - Q: current state-action value function
-        - M: number of iterations to be considered
-        return the state action value function under the pseudo-optimal policy found
+    Greedy action selection
+    Args:
+        - s (int): current state
+        - Q (ndarray): state action value function
+        - allowed_actions (ndarray): array of allowed actions
+    return (int): the action to be taken
 """
-def SARSA(env:Env, s, a, Q, M=5000):
-    m = 1
+def greedy(s, Q, allowed_actions):
+    # Extract the Q function for the given state
+    Q_s = Q[s, :].copy()
+    # Set to -inf the state action value function of not allowed actions
+    Q_s[allowed_actions == 0] = -np.inf
+    a = np.argmax(Q_s)
+    return a
+
+"""
+    SARSA algorithm implementation.
+    Args:
+        - env (DiscreteEnv): environment object
+        - s (int): current state
+        - a (int): action to be taken
+        - Q (ndarray): current state-action value function
+        - M (int): number of iterations to be done
+    return (ndarray): the state action value function under the pseudo-optimal policy found
+"""
+def SARSA(env:DiscreteEnv, s, a, Q, M=5000):
+    episods = 1
+    # Learning rate initialization
+    alpha = (1- episods/M)
+    # epsilon update
+    eps = (1 - episods/M)**2
+
     # SARSA main loop
-    while m < M:
-        # Learning rate initialization
-        alpha = (1- m/M)
-        # epsilon update
-        eps = (1 - m/M)**2
+    while episods < M:
+        
 
         # Perform a step in the environment, picking action a
-        s_prime, r, d, p = env.step(a)
+        s_prime, r, flags, p = env.step(a)
 
         # Policy improvement step
         # N.B. allowed action is not present in the Env object, must be managed
         a_prime = eps_greedy(s_prime, Q, eps, env.allowed_actions[s_prime.item()])
         # Evaluation step
         Q[s,a] = Q[s,a] + alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
+
         # Setting next iteration
-        m = m+1
-        s = s_prime
+        env.s = s_prime
         a = a_prime
+        if flags["done"]: #or flags["teleport"]:
+            env.reset()
+            a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
+            episods += 1
+            eps = max(0,(1 - episods/M)**2)
+            alpha= max(0, (1 - episods/M))
     return Q
+
+"""
+    Q_learning algorithm implementation
+        - env (DiscreteEnv): environment object
+        - Q (ndarray): inizial state-action value function
+        - episodes (int): number of episodes to be done
+        - alpha (float): initial learning rate
+        - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
+"""
+def Q_learning_2(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000):
+
+    # Initialize the step counter
+    nS, nA = Q.shape
+    # Count the number of visits to each state
+    visits = np.zeros(nS)
+
+    # Learning rate decay parameters
+    min_alpha = 0.01
+
+    # Exploration rate
+    eps = 1
+    # Epsilon decay parameters
+    min_epsilon = 0.01
+    
+    # List of state action value functions updated at each status step
+    Qs = []
+    # Pick the first action to be taken
+    
+    for episode in range(episodes):
+        # Q_learning main loop
+
+        while True:
+            s = env.s
+            visits[s] += 1
+            a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
+            
+            # Current state visit counter
+            visits[env.s]+= 1
+            # Perform a step in the environment, picking action a
+            s_prime, r, flags, p =  env.step(a)
+
+            # Policy improvement step
+            # N.B. allowed action is not present in the Env object, must be managed
+            a_prime = greedy(s_prime, Q, env.allowed_actions[s_prime.item()])
+
+            #print("Episode:", episode, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime, "epsilon:", eps, "alpha:", dec_alpha)
+            # Evaluation step
+            Q[s,a] = Q[s,a] + alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
+            
+            """current_q_value = Q[env.s, a]
+            best_next_q_value = np.max(Q[s_prime, :])
+            new_q_value = (1 - alpha) * current_q_value + alpha * (r + env.gamma * best_next_q_value)
+            Q[env.s, a] = new_q_value"""
+            
+            # Setup next step
+            env.s = s_prime
+            
+            # Reset the environment if a terminal state is reached or if a teleportation happened
+            if flags["done"] or flags["teleport"]:
+                env.reset()
+                a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
+                eps = max(min_epsilon, (1-episode/episodes)**2)
+                alpha= max(min_alpha, (1-episode/episodes))
+                break
+
+        if(episode % status_step == 0):
+                Qs.append(Q.copy())
+    if(episode % status_step != 0):
+                Qs.append(Q.copy())
+
+    return {"Qs": Qs, "visits": visits}
 
 """
     Q_learning algorithm implementation
