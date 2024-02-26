@@ -97,8 +97,6 @@ def SARSA(env:DiscreteEnv, s, a, Q, M=5000):
 
     # SARSA main loop
     while episods < M:
-        
-
         # Perform a step in the environment, picking action a
         s_prime, r, flags, p = env.step(a)
 
@@ -190,23 +188,41 @@ def Q_learning_2(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000)
 
     return {"Qs": Qs, "visits": visits}
 
-"""
-    Q_learning algorithm implementation
-        - env: environment object
-        - s: current state
-        - a: first action to be taken
-        - Q: current state-action value function
-        - M: number of iterations to be considered
-        - status: intermediate results flag
-        return the state action value function under the pseudo-optimal policy found
-"""
+
+def compute_metrics(env, Qs, Q_star):
+    metrics = {}
+    J = []
+    J_tau = []
+    delta_Q = []
+    delta_J = []
+    l_bounds = []
+    for Q in Qs:
+        J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
+        J_tau.append(get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu))
+        delta_Q.append(np.linalg.norm(Q - Q_star, np.inf))
+        delta_J.append(J[-1] - J_tau[-1])
+        d = compute_d(env.mu, env.P_mat_tau, get_policy(Q), env.gamma)
+        delta = compute_delta(d, get_policy(Q))
+        U = get_state_action_nextstate_value_function(env.P_mat_tau, env.reward, env.gamma, Q)
+        rel_model_adv_hat = compute_relative_model_advantage_function_hat(env.P_mat, env.xi, U)
+        dis_rel_model_adv = compute_discounted_distribution_relative_model_advantage_function_from_delta_tau(rel_model_adv_hat, delta, env.tau, 0.)
+        p
+        #model_adv = get_model_advantage_function(env.P_mat_tau, env.reward, env.tmdp.gamma, Q)
+
+    metrics["J"] = J
+    metrics["J_tau"] = J_tau
+    metrics["delta_Q"] = delta_Q
+    metrics["delta_J"] = delta_J
+    metrics["l_bounds"] = l_bounds
+    return metrics
+
 def Q_learning(env:Env, s, a, Q, Q_star, M=5000, alpha=0., status_step=200, debug=False, main_p=True):
     m = 0
     J_main_p = []
     J_curr_p = []
     delta_q = []
     delta_J = []
-    l_bounds = []
+    l_ = []
     nS, nA = Q.shape
     visits = np.zeros(nS)
     dec_alpha = np.ones(nS)*alpha
