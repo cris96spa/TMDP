@@ -1,6 +1,5 @@
 import numpy as np
 from gym import Env
-from distanceMeasure import *
 from DiscreteEnv import DiscreteEnv
 from scipy.special import softmax
 from model_functions import *
@@ -125,32 +124,27 @@ def SARSA(env:DiscreteEnv, s, a, Q, M=5000):
         - alpha (float): initial learning rate
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
 """
-def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000):
+def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, eps=.5, status_step=5000):
 
     # Initialize the step counter
     nS, nA = Q.shape
     # Count the number of visits to each state
     visits = np.zeros(nS)
 
-    # Learning rate decay parameters
-    min_alpha = 0.01
-
-    # Exploration rate
-    eps = 1
-    # Epsilon decay parameters
-    min_epsilon = 0.01
-    
     # List of state action value functions updated at each status step
     Qs = []
     # Pick the first action to be taken
     
+    dec_alpha = alpha
+    dec_eps = eps
+
     for episode in range(episodes):
         # Q_learning main loop
 
         while True:
             s = env.s
             visits[s] += 1
-            a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
+            a = eps_greedy(env.s, Q, dec_eps, env.allowed_actions[env.s.item()])
             
             # Current state visit counter
             visits[env.s]+= 1
@@ -163,7 +157,7 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000):
 
             #print("Episode:", episode, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime, "epsilon:", eps, "alpha:", dec_alpha)
             # Evaluation step
-            Q[s,a] = Q[s,a] + alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
+            Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
             
             """current_q_value = Q[env.s, a]
             best_next_q_value = np.max(Q[s_prime, :])
@@ -177,8 +171,8 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000):
             if flags["done"] or flags["teleport"]:
                 env.reset()
                 a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
-                eps = max(min_epsilon, (1-episode/episodes)**2)
-                alpha= max(min_alpha, (1-episode/episodes))
+                dec_eps = max(0, eps*(1-episode/episodes)**2)
+                dec_alpha= max(0, alpha*(1-episode/episodes))
                 break
 
         if(episode % status_step == 0):
@@ -207,6 +201,7 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, status_step=5000):
     return (dict): the computed metrics
 """
 def compute_metrics(env, Qs, Q_star, tau_prime=0.):
+    Qs = Qs.copy()
     Qs.append(Q_star)
     metrics = {}
     J = []
@@ -225,14 +220,14 @@ def compute_metrics(env, Qs, Q_star, tau_prime=0.):
         delta_J.append(J[-1] - J_tau[-1])
 
         # Compute the L_inf norm of the difference between the state action value function and the optimal one
-        delta_Q.append(np.linalg.norm(Q - Qs[-1], np.inf))
+        delta_Q.append(np.linalg.norm(Q - Q_star, np.inf))
         
         # Compute some model based metrics for the evaluation of the performance improvement
         d = compute_d(env.mu, env.P_mat_tau, get_policy(Q), env.gamma)
         delta = compute_delta(d, get_policy(Q))
         U = get_state_action_nextstate_value_function(env.P_mat_tau, env.reward, env.gamma, Q)
         rel_model_adv_hat = compute_relative_model_advantage_function_hat(env.P_mat, env.xi, U)
-        dis_rel_model_adv = compute_discounted_distribution_relative_model_advantage_function_from_delta_tau(rel_model_adv_hat, delta, env.tau, 0.)
+        dis_rel_model_adv = compute_discounted_distribution_relative_model_advantage_function_from_delta_tau(rel_model_adv_hat, delta, env.tau, tau_prime)
         adv = dis_rel_model_adv/(1-env.gamma)
         #Advantage term for the performance improvement lower bound
         adv_terms.append(adv)
@@ -249,9 +244,10 @@ def compute_metrics(env, Qs, Q_star, tau_prime=0.):
 
     metrics["J"] = J
     metrics["J_tau"] = J_tau
-    metrics["delta_Q"] = delta_Q
     metrics["delta_J"] = delta_J
-    metrics["l_bounds"] = l_bounds
+    metrics["delta_Q"] = delta_Q
     metrics["adv_terms"] = adv_terms
     metrics["diss_terms"] = diss_terms
+    metrics["l_bounds"] = l_bounds
+
     return metrics
