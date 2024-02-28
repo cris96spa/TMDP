@@ -16,8 +16,7 @@ def generate_river(nS=6, small=5, large=10000):
     nA = 2
     p = compute_probabilities(nS, nA)
     r = compute_rewards(nS, nA, small, large)
-    mu = compute_mu(nS)
-    return nS, nA, p, r, mu
+    return nS, nA, p, r
 
 """
     Compute probabilities as follows:
@@ -97,7 +96,3 @@ def compute_rewards(nS, nA, small, large):
      Returns:
             (numpy.ndarray): initial state probability vector
 """
-def compute_mu(nS):
-    # Uniform probability distribution of initial states
-    mu = np.ones(nS)/nS
-    return mu

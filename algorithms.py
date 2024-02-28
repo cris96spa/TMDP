@@ -124,13 +124,20 @@ def SARSA(env:DiscreteEnv, s, a, Q, M=5000):
         - alpha (float): initial learning rate
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
 """
-def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, eps=.5, status_step=5000):
+def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=5000, state_distribution=[]):
 
     # Initialize the step counter
     nS, nA = Q.shape
     # Count the number of visits to each state
-    visits = np.zeros(nS)
-
+    visits = np.ones(nS)
+    visit_distr = np.zeros(nS)
+    visit_weights = np.zeros(nS)
+    if not eps:
+        eps = max(1, alpha*3)
+    if len(state_distribution):
+         visit_weights = 1.0 / (state_distribution + 1e-8)
+         visit_weights = visit_weights / np.sum(visit_weights)
+    
     # List of state action value functions updated at each status step
     Qs = []
     # Pick the first action to be taken
@@ -144,10 +151,20 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, eps=.5, status_step
         while True:
             s = env.s
             visits[s] += 1
+
+            dec_eps = max(0, eps*(1-episode/episodes)**2)
+            dec_alpha= max(0, alpha*(1-episode/episodes))
+
+            if not len(state_distribution):
+                visit_distr = visits/(sum(visits))
+                visit_weights = 1.0 / (visit_distr + 1e-8)
+                visit_weights = visit_weights / np.sum(visit_weights)
+        
+
+            #dec_alpha= alpha*(1/(visits[s]+1))
+            # Pick an action according to the epsilon greedy policy
             a = eps_greedy(env.s, Q, dec_eps, env.allowed_actions[env.s.item()])
-            
-            # Current state visit counter
-            visits[env.s]+= 1
+          
             # Perform a step in the environment, picking action a
             s_prime, r, flags, p =  env.step(a)
 
@@ -170,17 +187,14 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=0.5, eps=.5, status_step
             # Reset the environment if a terminal state is reached or if a teleportation happened
             if flags["done"] or flags["teleport"]:
                 env.reset()
-                a = eps_greedy(env.s, Q, eps, env.allowed_actions[env.s.item()])
-                dec_eps = max(0, eps*(1-episode/episodes)**2)
-                dec_alpha= max(0, alpha*(1-episode/episodes))
-                break
+            break
 
         if(episode % status_step == 0):
                 Qs.append(Q.copy())
     if(episode % status_step != 0):
                 Qs.append(Q.copy())
 
-    return {"Qs": Qs, "visits": visits}
+    return {"Qs": Qs, "visits": visits, "visit_weights": visit_weights}
 
 
 """
@@ -246,6 +260,7 @@ def compute_metrics(env, Qs, Q_star, tau_prime=0.):
     metrics["J_tau"] = J_tau
     metrics["delta_J"] = delta_J
     metrics["delta_Q"] = delta_Q
+
     metrics["adv_terms"] = adv_terms
     metrics["diss_terms"] = diss_terms
     metrics["l_bounds"] = l_bounds
