@@ -16,23 +16,28 @@ def categorical_sample(prob_n, np_random):
     # np_randoim.random() generates a random number in [0,1], then we find the first index of the cumulative sum that is greater than the random number
     return (csprob_n > np_random.random()).argmax()
 
+
 """
     Compute the average reward when picking action a in state s. It is evaluated as R(s,a) = sum_s' P(s'|s,a) * R(s,a,s')
     
     Args:    
-        - P_mat (np.ndarray): probability transition function [nS, nA, nS]
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS] or state teleport probability distribution [nS]
         - reward (np.ndarray): the reward function [nS, nA, nS]
     return (np.ndarray):the average reward when picking action a in state s as a as [ns, nA] matrix
 """
 def compute_r_s_a(P_mat, reward):
     # Average reward when taking action a in state s, of size |S|x|A|
-    nS, nA, _ = P_mat.shape
+    nS, nA, _ = reward.shape
+    # If the probability transition function is the teleport probability vector, we simply replicate it to match the shape of the reward function
+    if len(P_mat.shape) == 1:
+        P_mat = np.tile(P_mat, (nA, nS)).T
+        P_mat = P_mat.reshape((nS, nA, nS))
+        
     r_s_a =np.zeros(shape=(nS, nA))
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
                 r_s_a[s,a] = r_s_a[s,a] + P_mat[s][a][s_prime] * reward[s, a, s_prime]
-            #print("Updating state {}, action {}, with {}".format(s, a, avg_rew))
     return r_s_a
 
 """
@@ -557,3 +562,29 @@ def  get_optimal_tauprime(P_mat_tau, reward, gamma, tau, Q, mu, xi, det=True):
     dinf = get_sup_difference_transition_models(P_mat_tau, xi)
 
     return tau - dis_rel_model_adv_hat*(1-gamma)/(2*gamma**2*dq*de*dinf)
+
+
+"""
+    Extract the Q_hat state action function from a given state action value function Q
+    and the probability transition function.
+    Args:
+        - P_mat (np.ndarray): probability transition function [nS, nA, nS] or state teleport probability distribution [nS]
+        - r_s_a (np.ndarray): the average reward when picking action a in state s [nS, nA]
+        - gamma (float): discount factor
+        - Q (np.ndarray): the state action value function [nS, nA]
+    return (np.ndarray): the Q_hat state action value function [nS, nA]
+"""
+def get_q_hat(P_mat, r_s_a, gamma, Q):
+    ns, nA = Q.shape
+    q_hat = np.zeros((ns, nA))
+
+    # If P_mat is the state teleport probability vector, we simply replicate it to match the shape of the reward function
+    if len(P_mat.shape) == 1:
+        P_mat = np.tile(P_mat, (nA, ns)).T
+        P_mat = P_mat.reshape((ns, nA, ns))
+    
+    pi = get_policy(Q, det=True)
+    for s in range(ns):
+        for a in range(nA):
+            q_hat[s,a] = r_s_a[s,a] + gamma * np.matmul(P_mat[s,a,:], np.einsum('ij,ij->i', pi, Q))
+    return q_hat
