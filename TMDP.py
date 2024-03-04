@@ -29,9 +29,6 @@ class TMDP(DiscreteEnv):
     """
     def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=0.99, seed=None):
         
-        #: tau (float, optional): teleport probability
-        self.tau = tau
-        
         #: xi (numpy.ndarray): state teleport probability distribution
         self.xi = xi
         
@@ -46,26 +43,8 @@ class TMDP(DiscreteEnv):
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
         super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma, seed)
 
-        if tau == 0:
-            # Original problem
-            P_tau = self.P
-            P_mat_tau = self.P_mat
-        else:
-            # Simplified problem
-            P_tau = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
-            P_mat_tau = np.zeros(shape=(self.nS, self.nA, self.nS))
-
-            for s in range(self.nS):
-                for a in range(self.nA):
-                    for s1 in range(self.nS):
-                        prob = self.P[s][a][s1][0]
-                        prob_tau = prob * (1-tau) + xi[s1]*tau
-                        reward = self.reward[s][a][s1]
-                        P_tau[s][a].append((prob_tau, s1, reward, reward != 0))
-                        P_mat_tau[s][a][s1] = prob_tau
-
-        self.P_tau = P_tau
-        self.P_mat_tau = P_mat_tau
+        # Set the value of tau and build the P_tau and P_mat_tau
+        self.update_tau(tau)
 
 
     """
@@ -95,4 +74,30 @@ class TMDP(DiscreteEnv):
             flags["teleport"] = False
             return s_prime, reward, flags, self.P_mat_tau[s, a, s_prime]
 
-# TBD tenere traccia del teleporting 
+    """
+        Update the teleport probability tau, and the associated transition probabilities P_tau and P_mat_tau
+        Args:
+            tau (float): new teleport probability
+    """
+    def update_tau(self, tau):
+        self.tau = tau
+        if tau == 0:
+            # Original problem
+            P_tau = self.P
+            P_mat_tau = self.P_mat
+        else:
+            # Simplified problem
+            P_tau = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
+            P_mat_tau = np.zeros(shape=(self.nS, self.nA, self.nS))
+
+            for s in range(self.nS):
+                for a in range(self.nA):
+                    for s1 in range(self.nS):
+                        prob = self.P[s][a][s1][0]
+                        prob_tau = prob * (1-tau) + self.xi[s1]*tau
+                        reward = self.reward[s][a][s1]
+                        P_tau[s][a].append((prob_tau, s1, reward, reward != 0))
+                        P_mat_tau[s][a][s1] = prob_tau
+
+        self.P_tau = P_tau
+        self.P_mat_tau = P_mat_tau

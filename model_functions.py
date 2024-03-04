@@ -140,7 +140,7 @@ def get_value_function(Q, det=True):
     return V
 
 """
-    Compute the expected discounted sum of returns as J = sum_s d(s) * sum_a pi(a|s) * R(s,a)
+    Compute the expected discounted sum of returns as J = 1/(1-gamma) sum_s d(s) * sum_a pi(a|s) * R(s,a)
     Args:    
         - r_s_a (np.ndarray): the average reward when picking action a in state s [nS, nA]
         - pi (np.ndarray): the given policy [nS, nA]
@@ -572,9 +572,10 @@ def  get_optimal_tauprime(P_mat_tau, reward, gamma, tau, Q, mu, xi, det=True):
         - r_s_a (np.ndarray): the average reward when picking action a in state s [nS, nA]
         - gamma (float): discount factor
         - Q (np.ndarray): the state action value function [nS, nA]
+        - det (bool): deterministic flag. Whether or not extracting a deterministic policy
     return (np.ndarray): the Q_hat state action value function [nS, nA]
 """
-def get_q_hat(P_mat, r_s_a, gamma, Q):
+def get_q_hat(P_mat, r_s_a, gamma, Q, det=True):
     ns, nA = Q.shape
     q_hat = np.zeros((ns, nA))
 
@@ -583,8 +584,34 @@ def get_q_hat(P_mat, r_s_a, gamma, Q):
         P_mat = np.tile(P_mat, (nA, ns)).T
         P_mat = P_mat.reshape((ns, nA, ns))
     
-    pi = get_policy(Q, det=True)
+    # Extract the policy from Q
+    pi = get_policy(Q, det=det)
+    # weight the state action value function by the given policy, main diagonal of the matrix product among pi and Q^T
+    # Can be pre-computed for computational efficiency
+    pi_Q = np.einsum('ij,ij->i', pi, Q)
+    
     for s in range(ns):
         for a in range(nA):
-            q_hat[s,a] = r_s_a[s,a] + gamma * np.matmul(P_mat[s,a,:], np.einsum('ij,ij->i', pi, Q))
+            q_hat[s,a] = r_s_a[s,a] + gamma * np.matmul(P_mat[s,a,:], pi_Q)
     return q_hat
+
+
+"""
+    Compute the gradient of the expected discounted sum of returns as grad_J = 1/(1-gamma)sum_s d(s) * sum_a pi(a|s) * (Q_xi(s,a) - Q_p(s,a))
+    Args:
+        - pi (np.ndarray): the given policy [nS, nA]
+        - Q_p (np.ndarray): the state action value function under policy p [nS, nA]
+        - Q_xi (np.ndarray): the state action value function under policy xi [nS, nA]
+        - d (np.ndarray): the discounted state distribution as a vector [nS]
+        - gamma (float): discount factor
+"""
+def compute_grad_j(pi, Q_p, Q_xi, d, gamma):
+    nS, nA = pi.shape
+    grad = 0
+    for s in range(nS):
+        sum = 0
+        for a in range(nA):
+            sum += pi[s,a]*(Q_xi[s,a] - Q_p[s,a])
+        grad += d[s]*sum
+    grad = grad/(1-gamma)
+    return grad

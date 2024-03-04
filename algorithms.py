@@ -133,14 +133,14 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
     visit_distr = np.zeros(nS)
     visit_weights = np.zeros(nS)
     if not eps:
-        eps = max(1, alpha*3)
+        eps = max(1, alpha*4)
     if len(state_distribution):
          visit_weights = 1.0 / (state_distribution + 1e-8)
          visit_weights = visit_weights / np.sum(visit_weights)
     
     # List of state action value functions updated at each status step
     Qs = []
-    # Pick the first action to be taken
+    visit_distributions = []
     
     dec_alpha = alpha
     dec_eps = eps
@@ -159,7 +159,6 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
                 visit_distr = visits/(sum(visits))
                 visit_weights = 1.0 / (visit_distr + 1e-8)
                 visit_weights = visit_weights / np.sum(visit_weights)
-        
 
             #dec_alpha= alpha*(1/(visits[s]+1))
             # Pick an action according to the epsilon greedy policy
@@ -169,7 +168,7 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
             s_prime, r, flags, p =  env.step(a)
 
             # Policy improvement step
-            # N.B. allowed action is not present in the Env object, must be managed
+
             a_prime = greedy(s_prime, Q, env.allowed_actions[s_prime.item()])
 
             #print("Episode:", episode, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime, "epsilon:", eps, "alpha:", dec_alpha)
@@ -185,16 +184,25 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
             env.s = s_prime
             
             # Reset the environment if a terminal state is reached or if a teleportation happened
-            if flags["done"]:# or flags["teleport"]:
+            if flags["done"] or flags["teleport"]:
                 env.reset()
             break
 
         if(episode % status_step == 0):
-                Qs.append(Q.copy())
+            Qs.append(Q.copy())
+            if not len(state_distribution):
+                visit_distributions.append(visit_distr)
+            else:  
+                visit_distributions.append(state_distribution)
+                
     if(episode % status_step != 0):
-                Qs.append(Q.copy())
+        Qs.append(Q.copy())
+        if not len(state_distribution):
+            visit_distributions.append(visit_distr)
+        else:  
+            visit_distributions.append(state_distribution)
 
-    return {"Qs": Qs, "visits": visits, "visit_weights": visit_weights}
+    return {"Qs": Qs, "visit_distributions":visit_distributions, "visits": visits, "visit_weights": visit_weights}
 
 
 """
@@ -214,31 +222,33 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
         - tau_prime (float): new teleportation probability, default 0 to evaluate the performance improvement in switching to the original problem
     return (dict): the computed metrics
 """
-def compute_metrics(env, Qs, Q_star, tau_prime=0.):
+def compute_metrics(env, Qs, Q_star,  visit_distributions, tau_prime=0.):
     Qs = Qs.copy()
     Qs.append(Q_star)
+    d = compute_d(env.mu, env.P_mat_tau, get_policy(Q_star), env.gamma)
+    visit_distributions.append(d)
     metrics = {}
     J = []
     J_tau = []
     delta_J = []
-
     delta_Q = []
-
+    grad_J = []
     adv_terms = []
     diss_terms = []
     l_bounds = []
-    for Q in Qs:
+    for i, Q in enumerate(Qs):
+        pi = get_policy(Q)
         # Compute the expected discounted sum of rewards for the original problem and the simplified one with tau
-        J.append(get_expected_avg_reward(env.P_mat, get_policy(Q), env.reward, env.gamma, env.mu))
-        J_tau.append(get_expected_avg_reward(env.P_mat_tau, get_policy(Q), env.reward, env.gamma, env.mu))
+        J.append(get_expected_avg_reward(env.P_mat, pi, env.reward, env.gamma, env.mu))
+        J_tau.append(get_expected_avg_reward(env.P_mat_tau, pi, env.reward, env.gamma, env.mu))
         delta_J.append(J[-1] - J_tau[-1])
 
         # Compute the L_inf norm of the difference between the state action value function and the optimal one
         delta_Q.append(np.linalg.norm(Q - Q_star, np.inf))
         
         # Compute some model based metrics for the evaluation of the performance improvement
-        d = compute_d(env.mu, env.P_mat_tau, get_policy(Q), env.gamma)
-        delta = compute_delta(d, get_policy(Q))
+        d = compute_d(env.mu, env.P_mat_tau, pi, env.gamma)
+        delta = compute_delta(d, pi)
         U = get_state_action_nextstate_value_function(env.P_mat_tau, env.reward, env.gamma, Q)
         rel_model_adv_hat = compute_relative_model_advantage_function_hat(env.P_mat, env.xi, U)
         dis_rel_model_adv = compute_discounted_distribution_relative_model_advantage_function_from_delta_tau(rel_model_adv_hat, delta, env.tau, tau_prime)
@@ -256,8 +266,17 @@ def compute_metrics(env, Qs, Q_star, tau_prime=0.):
         # Compute the lower bound for the performance improvement
         l_bounds.append(adv-diss_pen)
 
+        # Compute the gradient of the expected discounted sum of rewards
+        r_s_a_p = compute_r_s_a(env.P_mat, env.reward)
+        r_s_a_xi = compute_r_s_a(env.xi, env.reward)
+        Q_p = get_q_hat(env.P_mat, r_s_a_p, env.gamma, Q)
+        Q_xi = get_q_hat(env.xi, r_s_a_xi, env.gamma, Q)
+        grad = compute_grad_j(pi, Q_p, Q_xi, visit_distributions[i], env.gamma)
+        grad_J.append(grad)
+
     metrics["J"] = J
     metrics["J_tau"] = J_tau
+    metrics["grad_J"] = grad_J
     metrics["delta_J"] = delta_J
     metrics["delta_Q"] = delta_Q
 
