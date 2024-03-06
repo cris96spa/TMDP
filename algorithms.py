@@ -184,7 +184,7 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
             env.s = s_prime
             
             # Reset the environment if a terminal state is reached or if a teleportation happened
-            if flags["done"] or flags["teleport"]:
+            if flags["done"]:# or flags["teleport"]:
                 env.reset()
             break
 
