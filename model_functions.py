@@ -50,12 +50,33 @@ def compute_r_s_a(P_mat, reward):
 """
 def compute_p_sprime_s(P_mat, pi):
     nS, nA = pi.shape
-    P_sprime_s = np.zeros((nS, nS))
+    P_sprime_s = np.zeros((nS, nS), dtype='float64')
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
                 P_sprime_s[s][s_prime] = P_sprime_s[s][s_prime] + pi[s, a] * P_mat[s][a][s_prime]
     return P_sprime_s
+
+
+"""
+    Compute the discounted state distribution as d = (1-gamma) * mu * (I - gamma*P)^-1
+    Args:
+        - mu (np.ndarray): initial state distribution [nS]
+        - P_mat (np.ndarray): probability transition function of the original problem [nS, nA, nS]
+        - xi (np.ndarray): state teleport probability distribution [nS]
+        - pi (np.ndarray): the given policy [nS, nA]
+        - gamma (float): discount factor
+        - tau (float): teleport probability
+    return (np.ndarray): the discount state distribution as a vector [nS]
+"""
+def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau):
+    nS, nA = pi.shape
+    I = np.eye(nS)
+    Xi = np.tile(xi.astype('float64'), nS).reshape((nS, nS))
+    P_sprime_s = compute_p_sprime_s(P_mat, pi)
+    inv = np.linalg.inv(I - gamma*(1-tau)*P_sprime_s-tau*gamma*Xi)
+    d = np.matmul((1-gamma)*mu, inv)
+    return d
 
 
 """
@@ -74,6 +95,25 @@ def compute_d(mu, P_mat, pi, gamma):
     inv = np.linalg.inv(I - gamma*P_sprime_s)
     d = np.matmul((1-gamma)*mu, inv)
     return d
+
+
+def compute_grad_d(P_mat, P_mat_tau, xi, mu, pi, gamma):
+    nS, nA = pi.shape
+    I = np.eye(nS)
+    P_sprime_s = compute_p_sprime_s(P_mat, pi)
+    P_sprime_s_tau = compute_p_sprime_s(P_mat_tau, pi)
+
+    Xi = np.tile(xi, nS).reshape((nS, nS))
+    model_diff = P_sprime_s-Xi
+
+    M = np.linalg.inv(I - gamma*P_sprime_s_tau)
+    
+    grad_d = np.matmul(M, model_diff)
+    grad_d = np.matmul(grad_d, M)
+    grad_d = np.matmul(mu, grad_d)
+    grad_d = (1-gamma)*gamma*grad_d
+    return grad_d
+
 
 """
     Compute the discounted state action distribution under policy pi as delta = pi * d
@@ -615,3 +655,4 @@ def compute_grad_j(pi, Q_p, Q_xi, d, gamma):
         grad += d[s]*sum
     grad = grad/(1-gamma)
     return grad
+
