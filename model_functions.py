@@ -54,7 +54,7 @@ def compute_p_sprime_s(P_mat, pi):
     for s in range(nS):
         for a in range(nA):
             for s_prime in range(nS):
-                P_sprime_s[s][s_prime] = P_sprime_s[s][s_prime] + pi[s, a] * P_mat[s][a][s_prime]
+                P_sprime_s[s][s_prime] += pi[s, a] * P_mat[s][a][s_prime]
     return P_sprime_s
 
 
@@ -97,6 +97,8 @@ def compute_d(mu, P_mat, pi, gamma):
     return d
 
 
+"""
+"""
 def compute_grad_d(P_mat, P_mat_tau, xi, mu, pi, gamma):
     nS, nA = pi.shape
     I = np.eye(nS)
@@ -104,7 +106,7 @@ def compute_grad_d(P_mat, P_mat_tau, xi, mu, pi, gamma):
     P_sprime_s_tau = compute_p_sprime_s(P_mat_tau, pi)
 
     Xi = np.tile(xi, nS).reshape((nS, nS))
-    model_diff = P_sprime_s-Xi
+    model_diff = Xi-P_sprime_s
 
     M = np.linalg.inv(I - gamma*P_sprime_s_tau)
     

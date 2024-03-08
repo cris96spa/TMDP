@@ -126,17 +126,21 @@ def SARSA(env:DiscreteEnv, s, a, Q, M=5000):
 """
 def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=5000, state_distribution=[]):
 
-    # Initialize the step counter
     nS, nA = Q.shape
+
     # Count the number of visits to each state
     visits = np.ones(nS)
     visit_distr = np.zeros(nS)
-    visit_weights = np.zeros(nS)
+    
+    # Probability transition matrix estimation
+    counts = np.zeros((nS, nA, nS))
+    P = np.zeros((nS, nA, nS))
+    
+    # Parametric Policy estimation ???
+    param_policy = np.zeros((nS, nA))
+   
     if not eps:
         eps = max(1, alpha*4)
-    if len(state_distribution):
-         visit_weights = 1.0 / (state_distribution + 1e-8)
-         visit_weights = visit_weights / np.sum(visit_weights)
     
     # List of state action value functions updated at each status step
     Qs = []
@@ -156,11 +160,8 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
             dec_alpha= max(0, alpha*(1-episode/episodes))
 
             if not len(state_distribution):
-                visit_distr = visits/(sum(visits))
-                visit_weights = 1.0 / (visit_distr + 1e-8)
-                visit_weights = visit_weights / np.sum(visit_weights)
+                visit_distr = visits/(np.sum(visits))
 
-            #dec_alpha= alpha*(1/(visits[s]+1))
             # Pick an action according to the epsilon greedy policy
             a = eps_greedy(env.s, Q, dec_eps, env.allowed_actions[env.s.item()])
           
@@ -168,17 +169,19 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
             s_prime, r, flags, p =  env.step(a)
 
             # Policy improvement step
-
             a_prime = greedy(s_prime, Q, env.allowed_actions[s_prime.item()])
 
             #print("Episode:", episode, " state:", s, " action:", a, " next state:",s_prime, " reward:",r, " next action:", a_prime, "epsilon:", eps, "alpha:", dec_alpha)
             # Evaluation step
             Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a])
-            
-            """current_q_value = Q[env.s, a]
-            best_next_q_value = np.max(Q[s_prime, :])
-            new_q_value = (1 - alpha) * current_q_value + alpha * (r + env.gamma * best_next_q_value)
-            Q[env.s, a] = new_q_value"""
+
+            # Update probability transition matrix estimation
+            if not flags["teleport"]:
+                
+                counts[s, a, s_prime] += 1
+                """print(counts)
+                print(np.sum(counts[s_prime, :]))"""
+                P[s, a, :] = counts[s, a, :]/np.sum(counts[s, a, :])
             
             # Setup next step
             env.s = s_prime
@@ -202,7 +205,7 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
         else:  
             visit_distributions.append(state_distribution)
 
-    return {"Qs": Qs, "visit_distributions":visit_distributions, "visits": visits, "visit_weights": visit_weights}
+    return {"Qs": Qs, "visit_distributions":visit_distributions, "P":P, "counts":counts, "visits": visits}
 
 
 """
