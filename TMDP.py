@@ -1,6 +1,7 @@
 import numpy as np
 from DiscreteEnv import DiscreteEnv
 from model_functions import *
+import pygame 
 
 """
     A Teleport-MDP (TMDP) is a Markovian decision process that follows (1 - tau) times the model dynamics,
@@ -29,6 +30,7 @@ class TMDP(DiscreteEnv):
     """
     def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=0.99, seed=None):
         
+        self.env = env
         #: xi (numpy.ndarray): state teleport probability distribution
         self.xi = xi
         
@@ -41,7 +43,7 @@ class TMDP(DiscreteEnv):
         self.allowed_actions = env.allowed_actions
 
         # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
-        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma, seed)
+        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma=gamma, seed=seed, render_mode=env.render_mode)
 
         # Set the value of tau and build the P_tau and P_mat_tau
         self.update_tau(tau)
@@ -57,6 +59,10 @@ class TMDP(DiscreteEnv):
             (int, float, bool, float): next state, immmediate reward, done flag, probability of ending up in that state
     """
     def step(self, a):
+        
+        if self.render_mode == "human":
+            self.env._render_frame()
+        
         s = self.s
         if self.np_random.random() <= self.tau:
             # Teleport branch

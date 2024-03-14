@@ -34,8 +34,9 @@ class DiscreteEnv(Env):
             gamma (float, optional): discount factor. Default to 1.
             seed (float, optional): pseudo-random generator seed. Default to None.
     """ 
-    def __init__(self, nS, nA, P, mu, gamma=1., seed=None) -> None:
+    def __init__(self, nS, nA, P, mu, gamma=1., seed=None, render_mode=None) -> None:
         
+        self.render_mode = render_mode
         #: P (dict): P[s][a] = [(probability, nextstate, reward, done), ...]
         self.P = P
 
@@ -106,5 +107,5 @@ class DiscreteEnv(Env):
         self.s = np.array([s]).ravel()
         # update last action
         self.lastaction = a
-        
+
         return self.s, r.ravel(), {"done":done}, p

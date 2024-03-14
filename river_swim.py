@@ -1,5 +1,5 @@
 import numpy as np
-
+import pygame
 from DiscreteEnv import DiscreteEnv
 from river_swim_generator import generate_river
 
@@ -20,7 +20,7 @@ from river_swim_generator import generate_river
         DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
 """
 class River(DiscreteEnv):
-    
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
     """Constructor
 
         Args:
@@ -31,8 +31,22 @@ class River(DiscreteEnv):
             seed (float, optional): pseudo-random generator seed. Default to None.
     """
 
-    def __init__(self, nS, mu, gamma=1., small=5, large=10000, seed=None):
+    def __init__(self, nS, mu, gamma=1., small=5, large=10000, seed=None, render_mode=None):
+
+        self.size = nS
+        self.window_size = 400
         
+        self._actions_to_direction =  {
+            0: np.array([-1]),  # left
+            1: np.array([1]),  # right
+        }
+        
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+
+        self.window = None
+        self.clock = None
+
         # Generate river parameters using the auxiliary function    
         nS, nA, p, r = generate_river(nS, small, large)
 
@@ -65,7 +79,45 @@ class River(DiscreteEnv):
                     
         self.P_mat = P_mat
         # Calling the superclass constructor to initialize other parameters
-        super(River, self).__init__(nS, nA, P, mu, gamma, seed)
+        super(River, self).__init__(nS, nA, P, mu, gamma, seed, render_mode=render_mode)
+
+    def _render_frame(self):
+        if self.window is None:
+            return
+
+        canvas = pygame.Surface((self.window_size, self.window_size))
+        canvas.fill((255, 255, 255))
+        pix_square_size = self.window_size / self.size  # The size of a single grid square in pixels
+
+        # Draw grid lines
+        for x in range(self.size + 1):
+            pygame.draw.line(canvas, (0, 0, 0), (x * pix_square_size, 0), (x * pix_square_size, self.window_size), width=2)
+            pygame.draw.line(canvas, (0, 0, 0), (0, x * pix_square_size), (self.window_size, x * pix_square_size), width=2)
+
+        # Draw the agent
+        agent_position = self.s[0]
+        pygame.draw.circle(canvas, (255, 0, 0), (int(agent_position * pix_square_size), self.window_size // 2), 10)
+
+        # Draw the target on the leftmost state
+        target_position_left = 0
+        pygame.draw.rect(canvas, (0, 255, 0), pygame.Rect(int(target_position_left * pix_square_size), self.window_size // 2 - 20, int(pix_square_size), 40))
+
+        # Draw the target on the rightmost state
+        target_position_right = self.size - 1
+        pygame.draw.rect(canvas, (0, 255, 0), pygame.Rect(int(target_position_right * pix_square_size), self.window_size // 2 - 20, int(pix_square_size), 40))
+
+        self.window.blit(canvas, (0, 0))
+        pygame.display.flip()
+        self.clock.tick(30)  # Adjust the framerate as needed
 
 
-        
+    def render(self):
+        self._render_frame()
+            
+    def close(self):
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
+
+    def _target_location(self):
+        return self.size - 1
