@@ -1,13 +1,18 @@
 import numpy as np
 from gym import Env
 from DiscreteEnv import DiscreteEnv
+from TMDP import TMDP
 from model_functions import *
 from gym.utils import seeding
 
 seed = None
-seed = 2184109
+#seed = 73111819126096741712253486776689977811
 
-np_random, _ = seeding.np_random(seed)
+np_random, seed = seeding.np_random(seed)
+def get_current_seed():
+    return seed
+
+print("Current seed for result reproducibility: {}".format(seed))
 
 """
     Tabular softmax function. To reduce redundancy, the policy is parameterized using nA-1 parameters for each state, whereas the last one
@@ -259,8 +264,8 @@ def Q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
     return (dict): list of state action value functions updated at each status step, visit distributions, visit count, history of episodes
 """
-def batch_q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status_step=5000, batch_size=10):
-
+def batch_q_learning(env:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=5000, batch_size=10):
+    
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
     history = []
 
@@ -366,6 +371,148 @@ def batch_q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status
 
     return {"Qs": Qs, "visits_distributions":visits_distributions, "visits": visits, "history": history, "disc_visits_distributions": disc_visits_distributions}
 
+
+"""
+    Double Q_learning algorithm implementation. It tries to learn Q_tau as a mixture among Q_p and Q_xi, where the mixture is controlled by the teleportation probability tau.
+    Args:
+        - env (TMDP): environment object
+        - Q_p (ndarray): state-action value function for the original problem
+        - Q_xi (ndarray): state-action value function for the simplified problem
+        - episodes (int): number of episodes to be done
+        - alpha (float): initial learning rate
+        - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
+        - batch_size (int): size of the batch
+    return (dict): list of state action value functions updated at each status step, visit distributions, visit count, history of episodes
+"""
+def batch_double_q_learning(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0., status_step=5000, batch_size=10):
+
+    # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
+    history = []
+
+    # Subset of the history, considering only the current batch
+    batch = []
+    trajectory_count = 0
+    t = 0
+    done = False
+
+    nS, nA = Q_p.shape
+
+    # Count the number of visits to each state
+    visits = np.zeros(nS)
+    visits_distr = np.zeros(nS)
+    disc_visits = np.zeros(nS)
+    disc_visits_distr = np.zeros(nS)
+   
+    if not eps:
+        eps = min(1, alpha*2)
+    
+    # List of state action value functions updated at each status step
+    Qs = []
+    Q_ps = []
+    Q_xis = []
+
+    Q = (1-env.tau)*Q_p + env.tau*Q_xi
+
+    visits_distributions = []
+    disc_visits_distributions = []
+    
+    dec_alpha = alpha
+    dec_eps = eps
+    
+
+    for episode in range(episodes):
+        # Q_learning main loop
+
+        while True:
+            s = env.s
+            # Pick an action according to the epsilon greedy policy
+            a = eps_greedy(env.s, Q, dec_eps, env.allowed_actions[env.s[0]])
+          
+            # Perform a step in the environment, picking action a
+            s_prime, r, flags, p =  env.step(a)
+            his = {"state": s[0], "action": a, "reward": r[0], "next_state": s_prime[0], "flags": flags, "t": t}
+            history.append(his)
+            batch.append(his)
+            
+            # Setup next step
+            env.s = s_prime
+
+            t += 1
+            # Reset the environment if a terminal state is reached or if a teleportation happened
+            if flags["done"]:# or flags["teleport"]:
+                env.reset()
+                trajectory_count += 1
+
+            if episode < episodes-1:    
+                break
+            else: # wait for the end of the trajectory to finish 
+                if flags["done"]:
+                    done = True
+                    break
+
+        if( (trajectory_count != 0 and trajectory_count % batch_size == 0) or done):
+            # Estimation of the number of batches per episode if all batches has the size of the current one
+            batch_per_episode = np.ceil(episode/len(batch))
+            # Estimation of the total number of batches if all batches has the size of the current one
+            total_number_of_batches = np.ceil(episodes/len(batch))
+
+            dec_alpha= max(0, alpha*(1-batch_per_episode/total_number_of_batches))
+            dec_eps = max(0, eps*(1-batch_per_episode/total_number_of_batches)**2)
+
+            ep_count = 0
+            for ep in batch:
+                
+                s = ep["state"]
+                a = ep["action"]
+                r = ep["reward"]
+                s_prime = ep["next_state"]
+                flags = ep["flags"]
+                t = ep["t"]
+
+                # Policy improvement step, greedy w.r.t. Q
+                a_prime = greedy(s_prime, Q, env.allowed_actions[s_prime])
+
+                # Evaluation step
+                if not flags["teleport"]: # Update Q_p
+                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
+                else: # Update Q_xi
+                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
+                
+                # Update Q 
+                # Option 1 - Leaning Q from Q_p and Q_xi
+                Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
+
+                # Option 2 - Leaning Q from Q_p and Q_xi
+                #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]) - Q[s,a])
+
+                # Option 3 - Compute Q directly from Q_p and Q_xi
+                #Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
+
+                visits[s] += 1
+                disc_visits[s] += env.gamma**ep_count
+
+                visits_distr = visits/(np.sum(visits))
+                disc_visits_distr = disc_visits/(np.sum(disc_visits))
+
+                if flags["done"]:
+                    ep_count = 0
+                else:
+                    ep_count += 1
+
+            # Reset the batch
+            batch = []
+            trajectory_count = 0
+
+        if episode % status_step == 0 or done:
+            # Mid-result status update
+            Qs.append(Q.copy())
+            Q_ps.append(Q_p.copy())
+            Q_xis.append(Q_xi.copy())
+            visits_distributions.append(visits_distr.copy())
+            disc_visits_distributions.append(disc_visits_distr.copy())
+
+    return {"Qs": Qs, "Q_ps": Q_ps, "Q_xis": Q_xis, "visits_distributions":visits_distributions, "visits": visits, "history": history, "disc_visits_distributions": disc_visits_distributions}
+
 """
     Policy gradient algorithm implementation
     Args:
@@ -377,13 +524,13 @@ def batch_q_learning(env:DiscreteEnv, Q, episodes=5000, alpha=1., eps=0., status
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
     return (dict): list of state action value functions updated at each status step, history of episodes
 """
-def policy_gradient(env:DiscreteEnv, Q, episodes=5000, alpha=1., status_step=5000, batch_size=10, temperature=1.0):
+def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5000, batch_size=10, temperature=1.0):
 
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
     history = []
     # Subset of the history, considering only the current batch
     batch = []
-    nS, nA = Q.shape
+    nS, nA = Q_p.shape
 
     # Counts the number of trajectories in the current batch
     trajectory_count = 0
@@ -398,6 +545,9 @@ def policy_gradient(env:DiscreteEnv, Q, episodes=5000, alpha=1., status_step=500
     Qs = []
     thetas = []
     dec_alpha = alpha
+    Q_ps = []
+    Q_xis = []
+    Q = (1-env.tau)*Q_p + env.tau*Q_xi
 
     # Count the number of visits to each state
     visits = np.zeros(nS)
@@ -469,14 +619,27 @@ def policy_gradient(env:DiscreteEnv, Q, episodes=5000, alpha=1., status_step=500
                 visits_distr = visits/(np.sum(visits))
                 disc_visits_distr = disc_visits/(np.sum(disc_visits))   
                 
-                
-                # Learning Q on policy
+                # Picking next action
                 if flags["done"]:
                     a_prime = select_action(env.s, theta, temperature=temp) # Last element of trajectory, pick the action from the policy
                 else:
                     a_prime = batch[j+1]["action"] # Pick next action from next state
                 
-                Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q[s,a]) # Q_function update
+                # Evaluation step
+                if not flags["teleport"]: # Update Q_p
+                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
+                else: # Update Q_xi
+                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
+                
+                # Update Q 
+                # Option 1 - Leaning Q from Q_p and Q_xi
+                Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
+
+                # Option 2 - Leaning Q from Q_p and Q_xi
+                #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]) - Q[s,a])
+
+                # Option 3 - Compute Q directly from Q_p and Q_xi
+                #Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
 
                 # Policy Gradient
                 probabilities = softmax_policy(theta[s], temperature=temp)
@@ -510,10 +673,12 @@ def policy_gradient(env:DiscreteEnv, Q, episodes=5000, alpha=1., status_step=500
             # Mid-result status update
             Qs.append(Q.copy())
             thetas.append(theta.copy())
+            Q_ps.append(Q_p.copy())
+            Q_xis.append(Q_xi.copy())
             visits_distributions.append(visits_distr.copy())
             disc_visits_distributions.append(disc_visits_distr.copy())
 
-    return {"Qs": Qs, "visits_distributions":visits_distributions, "visits": visits, "history": history, "disc_visits_distributions": disc_visits_distributions, "thetas": thetas}
+    return {"Qs": Qs, "Q_ps": Q_ps, "Q_xis": Q_xis, "visits_distributions":visits_distributions, "visits": visits, "history": history, "disc_visits_distributions": disc_visits_distributions, "thetas": thetas}
 
 
 """
