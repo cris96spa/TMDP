@@ -22,11 +22,6 @@ print("Current seed for result reproducibility: {}".format(seed))
         - temperature (float): temperature value
     return (ndarray): action probabilities associated to the given parameter vector
 """
-def softmax_policy(x, temperature=1.0):
-    # Apply the temperature scale and consider an implicit parameter for last action of 1
-    parameters = np.append(x/temperature, 1)
-    exp = np.exp(parameters - np.max(parameters)) # Subtracting the maximum value to avoid numerical instability
-    return exp / np.sum(exp)
 
 """def softmax_policy(x, t=1.0):
     e_x = np.exp((x-np.max(x))/t)
@@ -57,6 +52,62 @@ def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
         if epsilon <= threshold:
             loop = False
     return {"Q": Q, iterations: iterations}
+
+def bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau, threshold=1e-6):
+    nS, nA, _ = P_mat.shape
+    r_s_a = compute_r_s_a(P_mat, reward)
+    r_s_a_xi = compute_r_s_a(xi, reward)
+
+    Q = np.zeros((nS, nA))
+    Q_p = np.zeros((nS, nA))
+    Q_xi = np.zeros((nS, nA))
+    iterations = 0
+    done = False
+    while not done:
+        Q_old = Q.copy()
+        for s in range(nS):
+            for a in range(nA):
+                Q_p[s,a] = r_s_a[s,a] + gamma * np.dot(P_mat[s,a,:], np.max(Q, axis=1))
+                Q_xi[s,a] = r_s_a_xi[s,a] + gamma * np.dot(xi, np.max(Q, axis=1))
+                Q[s,a] = (1-tau)*Q_p[s,a] + tau*Q_xi[s,a]
+        iterations += 1 
+        epsilon = np.linalg.norm(Q - Q_old, np.inf)
+        if epsilon <= threshold:
+            done = True
+    return {"Q": Q, "Q_p":Q_p, "Q_xi": Q_xi, "iterations": iterations}
+
+def compute_gradient_q_tau(P_mat, xi, reward, mu, gamma, tau):
+    nS, nA, _ = P_mat.shape
+
+    Xi = np.tile(xi, (nA, nS)).T
+    Xi = Xi.reshape((nS, nA, nS))
+    P_mat_tau = (1-tau)*P_mat + tau*Xi
+
+    res = bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau)
+    Q_p = res["Q_p"]
+    Q_xi = res["Q_xi"]
+    Q_tau = res["Q"]
+    pi = get_policy(Q_tau)
+
+    r_s_a = compute_r_s_a(P_mat, reward)
+    r_s_a_xi = compute_r_s_a(xi, reward)
+    
+    d = compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau)
+    delta_r = r_s_a_xi - r_s_a
+
+    grad_q = np.zeros_like(Q_p)
+    sum_q = np.zeros(nS)
+    for s in range(nS):
+        for a in range(nA):
+            sum_q[s] += pi[s,a]*(Q_xi[s,a] - Q_p[s,a])
+    for s in range(nS):
+        for a in range(nA):
+            for s_prime in range(nS):
+                grad_q[s,a] += (P_mat_tau[s,a,s_prime] + gamma/(1-gamma)*d[s_prime])*sum_q[s_prime]
+            grad_q[s,a] = grad_q[s,a]*gamma + delta_r[s,a]
+            
+
+    return grad_q
 
 """
     Epsilon greedy action selection
@@ -112,6 +163,39 @@ def greedy(s, Q, allowed_actions):
         - t (float): temperature value
     return (int): the action to be taken
 """
+
+"""
+    Get the softmax probability associated to the parameter vector of a single state
+    Args:
+        - x (ndarray): parameter vector of shape [nA-1]
+        - temperature (float): temperature value
+    return (ndarray): the softmax policy probabilities associated to a single state
+"""
+def softmax_policy(x, temperature=1.0):
+    # Apply the temperature scale and consider an implicit parameter for last action of 1
+    parameters = np.append(x/temperature, 1)
+    exp = np.exp(parameters - np.max(parameters)) # Subtracting the maximum value to avoid numerical instability
+    return exp / np.sum(exp)
+
+"""
+    Get the overall softmax policy from parameter matrix
+    Args:
+        - x (ndarray): parameter matrix of shape [nS, nA-1]
+        - temperature (float): temperature value
+    return (ndarray): the overall softmax policy
+"""
+def get_softmax_policy(x, temperature=1.0):
+    # Apply the temperature scale and consider an implicit parameter for last action of 1
+    nS, _ = x.shape
+    parameters = np.zeros_like(x)
+    exp = np.zeros_like(x)
+    for s in range(nS):
+        parameters[s] = np.append(x[s]/temperature, 1)
+        exp[s] = np.exp(parameters[s] - np.max(parameters[s]))
+        exp[s] = exp[s] / np.sum(exp[s])
+    return exp
+
+
 def select_action(s, theta, temperature=1.0):
     if not np.isscalar(s):
         s = s.item()
@@ -418,11 +502,11 @@ def batch_double_q_learning(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0.
     
     dec_alpha = alpha
     dec_eps = eps
-    
+    avg_reward = 0
 
     for episode in range(episodes):
         # Q_learning main loop
-
+        cum_return = 0
         while True:
             s = env.s
             # Pick an action according to the epsilon greedy policy
@@ -449,6 +533,7 @@ def batch_double_q_learning(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0.
                 if flags["done"]:
                     done = True
                     break
+                
 
         if( (trajectory_count != 0 and trajectory_count % batch_size == 0) or done):
             # Estimation of the number of batches per episode if all batches has the size of the current one
@@ -469,24 +554,28 @@ def batch_double_q_learning(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0.
                 flags = ep["flags"]
                 t = ep["t"]
 
+                cum_return += r*env.gamma**ep_count
+
                 # Policy improvement step, greedy w.r.t. Q
                 a_prime = greedy(s_prime, Q, env.allowed_actions[s_prime])
 
                 # Evaluation step
                 if not flags["teleport"]: # Update Q_p
-                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
+                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q_p[s,a])
+                    #Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
                 else: # Update Q_xi
-                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
+                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q_xi[s,a])
+                    #Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
                 
                 # Update Q 
                 # Option 1 - Leaning Q from Q_p and Q_xi
-                Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
+                #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
 
                 # Option 2 - Leaning Q from Q_p and Q_xi
                 #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]) - Q[s,a])
 
                 # Option 3 - Compute Q directly from Q_p and Q_xi
-                #Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
+                Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
 
                 visits[s] += 1
                 disc_visits[s] += env.gamma**ep_count
@@ -498,6 +587,8 @@ def batch_double_q_learning(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0.
                     ep_count = 0
                 else:
                     ep_count += 1
+
+            avg_reward = cum_return/trajectory_count 
 
             # Reset the batch
             batch = []
@@ -532,40 +623,38 @@ def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=50
     batch = []
     nS, nA = Q_p.shape
 
+    Q = (1-env.tau)*Q_p + env.tau*Q_xi
+
     # Counts the number of trajectories in the current batch
     trajectory_count = 0
-    t = 0
-    done = False
+    t = 0 # total number of time steps. At the end t = episodes + #timesteps_last_trajectory (number of extra time steps to conclude the last trajectory)
+    done = False 
 
     #Policy parameter vector, considering nA-1 parameters for each state
     theta = np.zeros((nS, nA-1))
     
-    
-    # List of state action value functions updated at each status step
-    Qs = []
-    thetas = []
+    # Hyperparameters decay
     dec_alpha = alpha
-    Q_ps = []
-    Q_xis = []
-    Q = (1-env.tau)*Q_p + env.tau*Q_xi
-
-    # Count the number of visits to each state
+    final_temp = 1e-5 # Final temperature
+    temp = temperature # Current temperature
+    
+    # Visit distribution estimation
     visits = np.zeros(nS)
     visits_distr = np.zeros(nS)
-
     disc_visits = np.zeros(nS)
     disc_visits_distr = np.zeros(nS)
     
+    # Mid-term results
+    Qs = []
+    Q_ps = []
+    Q_xis = []
+    thetas = []
     visits_distributions = []
     disc_visits_distributions = []
 
-    # Temperature decay
-    final_temp = 1.0 # Final temperature
-    temp = temperature # Current temperature
-
-    for episode in range(episodes):
-        # Q_learning main loop
-
+    for episode in range(episodes): # Each episode is a single time step
+        
+        # Sampling episodes from trajectories
         while True:
             s = env.s
             # Pick an action according to the parametric policy
@@ -583,11 +672,11 @@ def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=50
             if flags["done"]:# or flags["teleport"]:
                 env.reset()
                 trajectory_count += 1
-            if episode < episodes-1: 
-                break
-            else: # wait for the end of the trajectory to finish
+            
+            if episode < episodes-1: # move to next time step
+                break   
+            else: # if reached the max num of time steps, wait for the end of the trajectory for consistency
                 if flags["done"]:
-                    #print("finally done")
                     done = True
                     break
         
@@ -604,7 +693,6 @@ def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=50
 
             dec_alpha= max(0, alpha*(1-batch_per_episode/total_number_of_batches))
             ep_count = 0
-            rewards = 0
             for j, ep in enumerate(batch):
                 s = ep["state"]
                 a = ep["action"]
@@ -622,24 +710,28 @@ def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=50
                 # Picking next action
                 if flags["done"]:
                     a_prime = select_action(env.s, theta, temperature=temp) # Last element of trajectory, pick the action from the policy
+                    ep_count = 0 # Useful for batch_size > 1
                 else:
                     a_prime = batch[j+1]["action"] # Pick next action from next state
+                    ep_count += 1 # Increase the time step within the trajectory
                 
-                # Evaluation step
+               # Evaluation step
                 if not flags["teleport"]: # Update Q_p
-                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
+                    Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q_p[s,a])
+                    #Q_p[s,a] = Q_p[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_p[s,a])
                 else: # Update Q_xi
-                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
+                    Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*Q[s_prime, a_prime] - Q_xi[s,a])
+                    #Q_xi[s,a] = Q_xi[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q_xi[s,a])
                 
                 # Update Q 
-                # Option 1 - Leaning Q from Q_p and Q_xi
-                Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
+                # Option 1 - Learning Q from Q_p and Q_xi
+                #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s_prime, a_prime]+ env.tau*Q_xi[s_prime, a_prime]) - Q[s,a])
 
-                # Option 2 - Leaning Q from Q_p and Q_xi
+                # Option 2 - Learning Q from Q_p and Q_xi
                 #Q[s,a] = Q[s,a] + dec_alpha*(r + env.gamma*((1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]) - Q[s,a])
 
                 # Option 3 - Compute Q directly from Q_p and Q_xi
-                #Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
+                Q[s,a] = (1-env.tau)*Q_p[s, a]+ env.tau*Q_xi[s, a]
 
                 # Policy Gradient
                 probabilities = softmax_policy(theta[s], temperature=temp)
@@ -656,13 +748,6 @@ def policy_gradient(env:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=50
                 grad_log_policy = grad_log_policy/temp
                     
                 theta[s] += dec_alpha*grad_log_policy[:-1]*Q[s,a] # Policy parameters update
-
-                # Reset eppisode count if a terminal state is reached
-                if flags["done"]:
-                    ep_count = 0
-                    rewards = 0
-                else:
-                    ep_count += 1
 
             # Reset the batch
             batch = []
