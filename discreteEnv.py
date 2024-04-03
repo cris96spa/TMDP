@@ -3,17 +3,17 @@
 """
 import numpy as np
 
-from gym import Env, spaces
-from gym.utils import seeding
+from gymnasium import Env, spaces
+from gymnasium.utils import seeding
 from model_functions import *
 
 
 """
     Discrete Environment class. It presents the following attributes:
-        - nS: number of states
+        - size: number of states
         - nA: number of actions
         - P: transitions as a dictionary of dictionary of lists. P[s][a] = [(probability, nextstate, reward, done), ...]
-        - mu: initial state distribution as list or array of length nS
+        - mu: initial state distribution as list or array of length size
         - gamma: discount factor
         - lastaction: used for rendering
         - action_space: action space of the environment
@@ -27,24 +27,24 @@ class DiscreteEnv(Env):
     """
         Constructor
         Args:
-            nS (int): number of states
+            size (int): number of states
             nA (int): number of actions
             P (dict): Dictionary of dictionary of list. P[s][a] = [(probability, nextstate, reward, done), ...]
-            mu (list): initial state distribution [nS]
+            mu (list): initial state distribution [size]
             gamma (float, optional): discount factor. Default to 1.
             seed (float, optional): pseudo-random generator seed. Default to None.
     """ 
-    def __init__(self, nS, nA, P, mu, gamma=1., seed=None, render_mode=None) -> None:
+    def __init__(self, size, nA, P, mu, gamma=1., seed=None, render_mode=None) -> None:
         
         self.render_mode = render_mode
         #: P (dict): P[s][a] = [(probability, nextstate, reward, done), ...]
         self.P = P
 
-        #: mu (list): initial state distribution [nS]
+        #: mu (list): initial state distribution [size]
         self.mu = mu
 
-        #: nS (int): number of states
-        self.nS = nS
+        #: size (int): number of states
+        self.size = size
 
         #: nA (int): nnumber of actions
         self.nA = nA
@@ -59,7 +59,7 @@ class DiscreteEnv(Env):
         self.action_space = spaces.Discrete(self.nA)
 
         #: observation_space (gym.spaces.discrete.Discrete): discrete state space
-        self.h = spaces.Discrete(self.nS)
+        self.h = spaces.Discrete(self.size)
         self.seed(seed)
         self.reset()
     
@@ -80,11 +80,11 @@ class DiscreteEnv(Env):
     def reset(self):
         
         # Get an initial state, from initial state distribution
-        s = categorical_sample(self.mu, self.np_random)
+        s = self.np_random.choice(self.size, p=self.mu)
         self.lastaction = None
         # Set the initial state
-        self.s = np.array([s]).ravel()
-        return self.s
+        self.state = np.array([s]).ravel()
+        return self.state
     
     """
         Environment transition step implementation.
@@ -98,14 +98,14 @@ class DiscreteEnv(Env):
         assert self.action_space.contains(a), "Action {} is not valid.".format(a)
 
         # Get the list of possible transitions from the current state, given the action a
-        transitions = self.P[self.s[0]][a]
+        transitions = self.P[self.state[0]][a]
         # Get the probability of moving from s to every possible next state, while picking action a
         probabilities = [t[0] for t in transitions]
         sample = categorical_sample(probabilities, self.np_random)
         p, s, r, done = transitions[sample]
         # update the current state
-        self.s = np.array([s]).ravel()
+        self.state = np.array([s]).ravel()
         # update last action
         self.lastaction = a
 
-        return self.s, r.ravel(), {"done":done}, p
+        return self.state, r.ravel(), {"done":done}, {"prob": p}

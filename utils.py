@@ -20,14 +20,14 @@ def to_json(dict, indent):
 def from_json(json_object):
     return json.loads(json_object)
 
-def write_results(nS, nA, env_name, results, mode):
-    file_name = env_name + "_" + str(nS) + "_" + str(nA)
+def write_results(size, nA, env_name, results, mode):
+    file_name = env_name + "_" + str(size) + "_" + str(nA)
     file_name = os.path.join(res_path, file_name)
     with open(file_name, mode = mode) as file:
         file.write(json.dumps(results, indent = 4, cls=NpEncoder))
 
-def read_results(nS, nA, env_name):
-    file_name = env_name + "_" + str(nS) + "_" + str(nA)
+def read_results(size, nA, env_name):
+    file_name = env_name + "_" + str(size) + "_" + str(nA)
     file_name = os.path.join(res_path, file_name)
     results = {}
     with open(file_name, 'r') as file:
