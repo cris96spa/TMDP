@@ -30,21 +30,21 @@ print("Current seed for result reproducibility: {}".format(seed))
 """
     Compute the optimal state action value function using the Bellman optimality operator as Q*(s,a) = R(s,a) + gamma *sum_{s' in S}P(s'|s,a) * max_{a' in A}Q*(s',a')
     Args:    
-        - P_mat (ndarray): transition probability matrix [size, nA, size]
-        - reward (ndarray): reward function [size, nA]
+        - P_mat (ndarray): transition probability matrix [nS, nA, nS]
+        - reward (ndarray): reward function [nS, nA]
         - gamma (float): discount factor
         - threshold (float): convergence threshold
     return (dict): the optimal state action value function and the number of iterations needed to converge
 """
 def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
-    size, nA, _ = P_mat.shape
+    nS, nA, _ = P_mat.shape
     r_s_a = compute_r_s_a(P_mat, reward)
-    Q = np.zeros((size, nA))
+    Q = np.zeros((nS, nA))
     iterations = 0
     loop = True
     while loop:
         Q_old = Q.copy()
-        for s in range(size):
+        for s in range(nS):
             for a in range(nA):
                 Q[s,a] = r_s_a[s,a] + gamma * np.dot(P_mat[s,a,:], np.max(Q, axis=1))
         iterations += 1 
@@ -54,18 +54,18 @@ def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
     return {"Q": Q, iterations: iterations}
 
 def bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau, threshold=1e-6):
-    size, nA, _ = P_mat.shape
+    nS, nA, _ = P_mat.shape
     r_s_a = compute_r_s_a(P_mat, reward)
     r_s_a_xi = compute_r_s_a(xi, reward)
 
-    Q = np.zeros((size, nA))
-    Q_p = np.zeros((size, nA))
-    Q_xi = np.zeros((size, nA))
+    Q = np.zeros((nS, nA))
+    Q_p = np.zeros((nS, nA))
+    Q_xi = np.zeros((nS, nA))
     iterations = 0
     done = False
     while not done:
         Q_old = Q.copy()
-        for s in range(size):
+        for s in range(nS):
             for a in range(nA):
                 Q_p[s,a] = r_s_a[s,a] + gamma * np.dot(P_mat[s,a,:], np.max(Q, axis=1))
                 Q_xi[s,a] = r_s_a_xi[s,a] + gamma * np.dot(xi, np.max(Q, axis=1))
@@ -77,10 +77,10 @@ def bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau, threshold=1e-6):
     return {"Q": Q, "Q_p":Q_p, "Q_xi": Q_xi, "iterations": iterations}
 
 def compute_gradient_q_tau(P_mat, xi, reward, mu, gamma, tau):
-    size, nA, _ = P_mat.shape
+    nS, nA, _ = P_mat.shape
 
-    Xi = np.tile(xi, (nA, size)).T
-    Xi = Xi.reshape((size, nA, size))
+    Xi = np.tile(xi, (nA, nS)).T
+    Xi = Xi.reshape((nS, nA, nS))
     P_mat_tau = (1-tau)*P_mat + tau*Xi
 
     res = bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau)
@@ -96,13 +96,13 @@ def compute_gradient_q_tau(P_mat, xi, reward, mu, gamma, tau):
     delta_r = r_s_a_xi - r_s_a
 
     grad_q = np.zeros_like(Q_p)
-    sum_q = np.zeros(size)
-    for s in range(size):
+    sum_q = np.zeros(nS)
+    for s in range(nS):
         for a in range(nA):
             sum_q[s] += pi[s,a]*(Q_xi[s,a] - Q_p[s,a])
-    for s in range(size):
+    for s in range(nS):
         for a in range(nA):
-            for s_prime in range(size):
+            for s_prime in range(nS):
                 grad_q[s,a] += (P_mat_tau[s,a,s_prime] + gamma/(1-gamma)*d[s_prime])*sum_q[s_prime]
             grad_q[s,a] = grad_q[s,a]*gamma + delta_r[s,a]
             
@@ -180,16 +180,16 @@ def softmax_policy(x, temperature=1.0):
 """
     Get the overall softmax policy from parameter matrix
     Args:
-        - x (ndarray): parameter matrix of shape [size, nA-1]
+        - x (ndarray): parameter matrix of shape [nS, nA-1]
         - temperature (float): temperature value
     return (ndarray): the overall softmax policy
 """
 def get_softmax_policy(x, temperature=1.0):
     # Apply the temperature scale and consider an implicit parameter for last action of 1
-    size, _ = x.shape
+    nS, _ = x.shape
     parameters = np.zeros_like(x)
     exp = np.zeros_like(x)
-    for s in range(size):
+    for s in range(nS):
         parameters[s] = np.append(x[s]/temperature, 1)
         exp[s] = np.exp(parameters[s] - np.max(parameters[s]))
         exp[s] = exp[s] / np.sum(exp[s])
@@ -211,11 +211,11 @@ def select_action(s, theta, temperature=1.0):
         - Q (ndarray): inizial state-action value function
         - episodes (int): number of episodes to be done
         - alpha (float): initial learning rate
-        - batch_size (int): size of the batch
+        - batch_nS (int): nS of the batch
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
     return (dict): list of state action value functions updated at each status step, visit distributions, visit count, history of episodes
 """
-def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=5000, batch_size=10):
+def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=5000, batch_nS=10):
     
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
     history = []
@@ -226,12 +226,12 @@ def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=
     t = 0
     done = False
 
-    size, nA = Q.shape
+    nS, nA = Q.shape
     # Count the number of visits to each state
-    visits = np.zeros(size)
-    visits_distr = np.zeros(size)
-    disc_visits = np.zeros(size)
-    disc_visits_distr = np.zeros(size)
+    visits = np.zeros(nS)
+    visits_distr = np.zeros(nS)
+    disc_visits = np.zeros(nS)
+    disc_visits_distr = np.zeros(nS)
    
     if not eps:
         eps = min(1, alpha*2)
@@ -249,18 +249,17 @@ def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=
         # Q_learning main loop
 
         while True:
-            s = tmdp.env.state
+            s = tmdp.env.s
             # Pick an action according to the epsilon greedy policy
-            a = eps_greedy(tmdp.env.state, Q, dec_eps, tmdp.env.allowed_actions[tmdp.env.state[0]])
-          
+            a = eps_greedy(tmdp.env.s, Q, dec_eps, tmdp.env.allowed_actions[int(tmdp.env.s)])
             # Perform a step in the environment, picking action a
             s_prime, r, flags, p =  tmdp.step(a)
-            his = {"state": s[0], "action": a, "reward": r, "next_state": s_prime[0], "flags": flags, "t": t}
+            his = {"state": s, "action": a, "reward": r, "next_state": s_prime, "flags": flags, "t": t}
             history.append(his)
             batch.append(his)
             
             # Setup next step
-            tmdp.state = s_prime
+            tmdp.s = s_prime
 
             t += 1
             # Reset the environment if a terminal state is reached or if a teleportation happened
@@ -275,10 +274,10 @@ def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=
                     done = True
                     break
 
-        if( (trajectory_count != 0 and trajectory_count % batch_size == 0) or done):
-            # Estimation of the number of batches per episode if all batches has the size of the current one
+        if( (trajectory_count != 0 and trajectory_count % batch_nS == 0) or done):
+            # Estimation of the number of batches per episode if all batches has the nS of the current one
             batch_per_episode = np.ceil(episode/len(batch))
-            # Estimation of the total number of batches if all batches has the size of the current one
+            # Estimation of the total number of batches if all batches has the nS of the current one
             total_number_of_batches = np.ceil(episodes/len(batch))
 
             dec_alpha= max(0, alpha*(1-batch_per_episode/total_number_of_batches))
@@ -295,7 +294,7 @@ def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=
                 t = ep["t"]
 
                 # Policy improvement step
-                a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[s_prime])
+                a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[int(s_prime)])
                 # Evaluation step
                 Q[s,a] = Q[s,a] + dec_alpha*(r + tmdp.gamma*Q[s_prime, a_prime] - Q[s,a])
 
@@ -332,10 +331,10 @@ def batch_q_learning(tmdp:TMDP, Q, episodes=5000, alpha=1., eps=0., status_step=
         - episodes (int): number of episodes to be done
         - alpha (float): initial learning rate
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
-        - batch_size (int): size of the batch
+        - batch_nS (int): nS of the batch
     return (dict): list of state action value functions updated at each status step, visit distributions, visit count, history of episodes
 """
-def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0., status_step=5000, batch_size=10):
+def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0., status_step=5000, batch_nS=10):
 
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
     history = []
@@ -346,13 +345,13 @@ def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0
     t = 0
     done = False
 
-    size, nA = Q_p.shape
+    nS, nA = Q_p.shape
 
     # Count the number of visits to each state
-    visits = np.zeros(size)
-    visits_distr = np.zeros(size)
-    disc_visits = np.zeros(size)
-    disc_visits_distr = np.zeros(size)
+    visits = np.zeros(nS)
+    visits_distr = np.zeros(nS)
+    disc_visits = np.zeros(nS)
+    disc_visits_distr = np.zeros(nS)
    
     if not eps:
         eps = min(1, alpha*2)
@@ -375,18 +374,18 @@ def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0
         # Q_learning main loop
         cum_return = 0
         while True:
-            s = tmdp.env.state
+            s = tmdp.env.s
             # Pick an action according to the epsilon greedy policy
-            a = eps_greedy(tmdp.env.state, Q, dec_eps, tmdp.env.allowed_actions[tmdp.state[0]])
+            a = eps_greedy(tmdp.env.s, Q, dec_eps, tmdp.env.allowed_actions[int(tmdp.s)])
           
             # Perform a step in the environment, picking action a
             s_prime, r, flags, p =  tmdp.step(a)
-            his = {"state": s[0], "action": a, "reward": r, "next_state": s_prime[0], "flags": flags, "t": t}
+            his = {"state": s, "action": a, "reward": r, "next_state": s_prime, "flags": flags, "t": t}
             history.append(his)
             batch.append(his)
             
             # Setup next step
-            tmdp.env.state = s_prime
+            tmdp.env.s = s_prime
 
             t += 1
             # Reset the environment if a terminal state is reached or if a teleportation happened
@@ -402,10 +401,10 @@ def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0
                     break
                 
 
-        if( (trajectory_count != 0 and trajectory_count % batch_size == 0) or done):
-            # Estimation of the number of batches per episode if all batches has the size of the current one
+        if( (trajectory_count != 0 and trajectory_count % batch_nS == 0) or done):
+            # Estimation of the number of batches per episode if all batches has the nS of the current one
             batch_per_episode = np.ceil(episode/len(batch))
-            # Estimation of the total number of batches if all batches has the size of the current one
+            # Estimation of the total number of batches if all batches has the nS of the current one
             total_number_of_batches = np.ceil(episodes/len(batch))
 
             dec_alpha= max(0, alpha*(1-batch_per_episode/total_number_of_batches))
@@ -424,7 +423,7 @@ def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0
                 cum_return += r*tmdp.gamma**ep_count
 
                 # Policy improvement step, greedy w.r.t. Q
-                a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[s_prime])
+                a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[int(s_prime)])
 
                 # Evaluation step
                 if not flags["teleport"]: # Update Q_p
@@ -478,17 +477,17 @@ def batch_double_q_learning(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., eps=0
         - Q (ndarray): inizial state-action value function
         - episodes (int): number of episodes to be done
         - alpha (float): initial learning rate
-        - batch_size (int): size of the batch in terms of number of trajectories
+        - batch_nS (int): nS of the batch in terms of number of trajectories
         - status_step (int): intermediate results flag. Used for the evaluation of the state action value function updates while learning
     return (dict): list of state action value functions updated at each status step, history of episodes
 """
-def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5000, batch_size=10, temperature=1.0):
+def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5000, batch_nS=10, temperature=1.0):
 
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
     history = []
     # Subset of the history, considering only the current batch
     batch = []
-    size, nA = Q_p.shape
+    nS, nA = Q_p.shape
 
     Q = (1-tmdp.tau)*Q_p + tmdp.tau*Q_xi
 
@@ -498,7 +497,7 @@ def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5
     done = False 
 
     #Policy parameter vector, considering nA-1 parameters for each state
-    theta = np.zeros((size, nA-1))
+    theta = np.zeros((nS, nA-1))
     
     # Hyperparameters decay
     dec_alpha = alpha
@@ -506,10 +505,10 @@ def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5
     temp = temperature # Current temperature
     
     # Visit distribution estimation
-    visits = np.zeros(size)
-    visits_distr = np.zeros(size)
-    disc_visits = np.zeros(size)
-    disc_visits_distr = np.zeros(size)
+    visits = np.zeros(nS)
+    visits_distr = np.zeros(nS)
+    disc_visits = np.zeros(nS)
+    disc_visits_distr = np.zeros(nS)
     
     # Mid-term results
     Qs = []
@@ -523,16 +522,16 @@ def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5
         
         # Sampling episodes from trajectories
         while True:
-            s = tmdp.env.state
+            s = tmdp.env.s
             # Pick an action according to the parametric policy
-            a = select_action(tmdp.env.state, theta, temperature=temp)
+            a = select_action(tmdp.env.s, theta, temperature=temp)
             # Perform a step in the environment, picking action a
             s_prime, r, flags, p =  tmdp.step(a)
-            his = {"state": s[0], "action": a, "reward": r, "next_state": s_prime[0], "flags": flags, "t": t}
+            his = {"state": s, "action": a, "reward": r, "next_state": s_prime, "flags": flags, "t": t}
             history.append(his)
             batch.append(his)
             # Setup next step
-            tmdp.env.state = s_prime
+            tmdp.env.s = s_prime
 
             t += 1
             # Reset the environment if a terminal state is reached or if a teleportation happened
@@ -548,11 +547,11 @@ def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5
                     break
         
         # Gradient policy over trajectories
-        if( (trajectory_count != 0 and trajectory_count % batch_size == 0) or done):
+        if( (trajectory_count != 0 and trajectory_count % batch_nS == 0) or done):
             
-            # Estimation of the number of batches per episode if all batches has the size of the current one
+            # Estimation of the number of batches per episode if all batches has the nS of the current one
             batch_per_episode = np.ceil(episode/len(batch))
-            # Estimation of the total number of batches if all batches has the size of the current one
+            # Estimation of the total number of batches if all batches has the nS of the current one
             total_number_of_batches = np.ceil(episodes/len(batch))
             
             # Temperature decay
@@ -576,8 +575,8 @@ def policy_gradient(tmdp:TMDP, Q_p, Q_xi, episodes=5000, alpha=1., status_step=5
                 
                 # Picking next action
                 if flags["done"]:
-                    a_prime = select_action(tmdp.env.state, theta, temperature=temp) # Last element of trajectory, pick the action from the policy
-                    ep_count = 0 # Useful for batch_size > 1
+                    a_prime = select_action(tmdp.env.s, theta, temperature=temp) # Last element of trajectory, pick the action from the policy
+                    ep_count = 0 # Useful for batch_nS > 1
                 else:
                     a_prime = batch[j+1]["action"] # Pick next action from next state
                     ep_count += 1 # Increase the time step within the trajectory
@@ -669,7 +668,7 @@ def compute_metrics(tmdp, Qs, Q_star,  visits_distributions, tau_prime=0., is_po
     l_bounds = []
     for i, Q in enumerate(Qs):
         if is_policy:
-            pi = [softmax_policy(Q[s], temperature=temperature) for s in range(tmdp.env.size)]
+            pi = [softmax_policy(Q[s], temperature=temperature) for s in range(tmdp.env.nS)]
             pi = np.array(pi)
         else:
             pi = get_policy(Q)
