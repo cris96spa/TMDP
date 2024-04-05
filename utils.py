@@ -14,7 +14,7 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-def to_json(dict, indent):
+def to_json(dict, indent=True):
     return json.dumps(dict, indent = indent, cls=NpEncoder)
 
 def from_json(json_object):
@@ -32,7 +32,6 @@ def read_results(nS, nA, env_name):
     results = {}
     with open(file_name, 'r') as file:
         results = json.load(file)
-    parse_results(results)
     return results
 
 def parse_results(results):
