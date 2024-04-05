@@ -1,20 +1,6 @@
 import numpy as np
-from gym import Env
+from gymnasium import Env
 from scipy.special import softmax
-
-"""
-    Sample from categorical distribution
-    Args:
-        - prob_n (np.ndarray) : probability distribution vector [nS]
-        - np_random: random number generator
-    return (int): a categorical sampling from the given probability distribution
-"""
-def categorical_sample(prob_n, np_random):
-    prob_n = np.asarray(prob_n)
-    # Compute cumulative sum of the probability vector, that is used for the CDF of the categorical distribution
-    csprob_n = np.cumsum(prob_n)
-    # np_randoim.random() generates a random number in [0,1], then we find the first index of the cumulative sum that is greater than the random number
-    return (csprob_n > np_random.random()).argmax()
 
 
 """
@@ -26,7 +12,7 @@ def categorical_sample(prob_n, np_random):
     return (np.ndarray):the average reward when picking action a in state s as a as [ns, nA] matrix
 """
 def compute_r_s_a(P_mat, reward):
-    # Average reward when taking action a in state s, of size |S|x|A|
+    # Average reward when taking action a in state s, of nS |S|x|A|
     nS, nA, _ = reward.shape
     # If the probability transition function is the teleport probability vector, we simply replicate it to match the shape of the reward function
     if len(P_mat.shape) == 1:

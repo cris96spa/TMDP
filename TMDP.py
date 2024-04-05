@@ -2,6 +2,9 @@ import numpy as np
 from DiscreteEnv import DiscreteEnv
 from model_functions import *
 import pygame 
+from River_swim import River
+from gymnasium.envs.toy_text.utils import categorical_sample
+from typing import List, Optional
 
 """
     A Teleport-MDP (TMDP) is a Markovian decision process that follows (1 - tau) times the model dynamics,
@@ -18,7 +21,7 @@ import pygame
     Args:
         DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
 """
-class TMDP(DiscreteEnv):
+class TMDP(Env):
     """
         Constructor
 
@@ -28,26 +31,16 @@ class TMDP(DiscreteEnv):
             tau (float, optional): teleport probability. Default to 0.
             gamma: discount factor. Default to 0.99
     """
-    def __init__(self, env:DiscreteEnv,  xi, tau=0., gamma=0.99, seed=None):
-        
+    def __init__(self, env:Env,  xi, tau=0., gamma=0.99, seed=None):
         self.env = env
         #: xi (numpy.ndarray): state teleport probability distribution
         self.xi = xi
-        
-        #: reward (numpy.ndarray): rewards associated to each action for each state []
-        self.reward = env.reward
-        
-        #: P_mat (numpy.ndarray): Matrix probability of moving from state s to s' (for each pairs (s,s') when picking action a (for each a) [nS*nA, nS]
-        self.P_mat = env.P_mat
-        #: allowed_actions (list): List of allowed action for the defined problem  
-        self.allowed_actions = env.allowed_actions
-
-        # This code works only for an environment that already wrapps discrete environment, otherwise the constructor code won't be resolved correctly
-        super(TMDP, self).__init__(env.nS, env.nA, env.P, env.mu, gamma=gamma, seed=seed, render_mode=env.render_mode)
-
+        self.gamma = gamma
+        self.nS = env.nS
+        self.nA = env.nA
         # Set the value of tau and build the P_tau and P_mat_tau
         self.update_tau(tau)
-
+        self.reset()
 
     """
         Basic step implementation. Allow to perform a single step in the environment.
@@ -59,26 +52,25 @@ class TMDP(DiscreteEnv):
             (int, float, bool, float): next state, immmediate reward, done flag, probability of ending up in that state
     """
     def step(self, a):
-        
-        if self.render_mode == "human":
-            self.env._render_frame()
-        
-        s = self.s
-        if self.np_random.random() <= self.tau:
+        if self.env.np_random.random() <= self.tau:
             # Teleport branch
-            s_prime = categorical_sample(self.xi, self.np_random)
-            #print("Teleported from state {} to {}:".format(self.s, s_prime))
+            s_prime = categorical_sample(self.xi, self.env.np_random)
             self.lastaction = a
-            r = self.reward[self.s, a, s_prime]
-            self.s = np.array([s_prime]).ravel()
+            r = self.env.reward[int(self.env.s), a, s_prime]
+            self.env.s = s_prime
+
+            if self.env.render_mode == "human":
+                self.env.render()
+
+            prob = self.xi[s_prime]*self.tau
             # In this case the done flag signal that a teleport happened
-            return self.s, r, {"done":r[0] != 0, "teleport": True}, self.P_mat_tau[s, a, s_prime]
+            return self.env.s, r, {"done":self.env.is_terminal(self.env.s), "teleport": True}, {"prob":prob}
         else:
             #print("Following regular probability transition function")
-            
-            s_prime, reward, flags, _ = super(TMDP, self).step(a)
+            s_prime, reward, flags, prob = self.env.step(a)
+            prob["prob"] = prob["prob"]*(1-self.tau)
             flags["teleport"] = False
-            return s_prime, reward, flags, self.P_mat_tau[s, a, s_prime]
+            return s_prime, reward, flags, prob
 
     """
         Update the teleport probability tau, and the associated transition probabilities P_tau and P_mat_tau
@@ -89,21 +81,29 @@ class TMDP(DiscreteEnv):
         self.tau = tau
         if tau == 0:
             # Original problem
-            P_tau = self.P
-            P_mat_tau = self.P_mat
+            P_tau = self.env.P
+            P_mat_tau = self.env.P_mat
         else:
             # Simplified problem
-            P_tau = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
-            P_mat_tau = np.zeros(shape=(self.nS, self.nA, self.nS))
+            P_tau = {s: {a: [] for a in range(self.env.nA)} for s in range(self.env.nS)}
+            P_mat_tau = np.zeros(shape=(self.env.nS, self.env.nA, self.env.nS))
 
-            for s in range(self.nS):
-                for a in range(self.nA):
-                    for s1 in range(self.nS):
-                        prob = self.P[s][a][s1][0]
+            for s in range(self.env.nS):
+                for a in range(self.env.nA):
+                    for s1 in range(self.env.nS):
+                        prob = self.env.P_mat[s][a][s1]
                         prob_tau = prob * (1-tau) + self.xi[s1]*tau
-                        reward = self.reward[s][a][s1]
-                        P_tau[s][a].append((prob_tau, s1, reward, reward != 0))
+                        reward = self.env.reward[s][a][s1]
+                        P_tau[s][a].append((prob_tau, s1, reward, self.env.is_terminal(s1)))
                         P_mat_tau[s][a][s1] = prob_tau
 
         self.P_tau = P_tau
         self.P_mat_tau = P_mat_tau
+
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ):
+        return self.env.reset(seed=seed)
