@@ -56,7 +56,7 @@ class TMDP(Env):
             # Teleport branch
             s_prime = categorical_sample(self.xi, self.env.np_random)
             self.lastaction = a
-            r = self.env.reward[int(self.env.s), a, s_prime]
+            r = self.env.reward[int(self.env.s), a, int(s_prime)]
             self.env.s = s_prime
 
             if self.env.render_mode == "human":
@@ -64,7 +64,8 @@ class TMDP(Env):
 
             prob = self.xi[s_prime]*self.tau
             # In this case the done flag signal that a teleport happened
-            return self.env.s, r, {"done":self.env.is_terminal(self.env.s), "teleport": True}, {"prob":prob}
+            done = self.env.is_terminal(self.env.s) and r != 0
+            return self.env.s, r, {"done":done, "teleport": True}, {"prob":prob}
         else:
             #print("Following regular probability transition function")
             s_prime, reward, flags, prob = self.env.step(a)

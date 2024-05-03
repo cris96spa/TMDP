@@ -11,11 +11,11 @@ import numpy as np
         (int, int, numpy.ndarray, numpy.ndarray, numpy.ndarray): number of states, 
                 number of actions, probability matrix, reward matrix, initial state distribution
 """
-def generate_river(nS=6, small=5, large=10000):
+def generate_river(nS=6, small=5, large=10000, r_shape=False):
 
     nA = 2
     p = compute_probabilities(nS, nA)
-    r = compute_rewards(nS, nA, small, large)
+    r = compute_rewards(nS, nA, small, large, r_shape)
     return nS, nA, p, r
 
 """
@@ -75,10 +75,12 @@ def compute_probabilities(nS, nA):
      Returns:
             (numpy.ndarray): immediate reward matrix of moving from each state to each other when an action is taken [nS, nA, nS]
 """
-def compute_rewards(nS, nA, small, large):
+def compute_rewards(nS, nA, small, large, r_shape=False):
 
     # initialize all rewards to 0
     r = np.zeros((nS, nA, nS))
+    if r_shape:
+        r = r - 1
     
     # set to small the reward associated to the left action on the leftmost state, when remaining there
     r[0, 0, 0] = small

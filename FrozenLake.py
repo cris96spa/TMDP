@@ -169,7 +169,8 @@ class FrozenLakeEnv(DiscreteEnv):
         desc=None,
         map_name="4x4",
         is_slippery=True,
-        seed = None
+        seed = None,
+        r_shape=False
     ):
         if desc is None and map_name is None:
             desc = generate_random_map()
@@ -177,10 +178,14 @@ class FrozenLakeEnv(DiscreteEnv):
             desc = MAPS[map_name]
         self.desc = desc = np.asarray(desc, dtype="c")
         self.nrow, self.ncol = nrow, ncol = desc.shape
-        self.reward_range = (0, 1)
-
         self.nA = nA = 4
         self.nS = nS = nrow * ncol
+        self.r_shape = r_shape
+        if r_shape:
+            self.reward_range = (-1., nS)
+        else:
+            self.reward_range = (0., 1.)
+
 
         self.mu = np.array(desc == b"S").astype("float64").ravel()
         self.mu /= self.mu.sum()
@@ -207,6 +212,11 @@ class FrozenLakeEnv(DiscreteEnv):
             newletter = desc[newrow, newcol]
             terminated = bytes(newletter) in b"GH"
             reward = float(newletter == b"G")
+            if self.r_shape:
+                if reward:
+                    reward = nS
+                else:
+                    reward = -1.
             return newstate, reward, terminated
 
         for row in range(nrow):
@@ -228,7 +238,7 @@ class FrozenLakeEnv(DiscreteEnv):
         
         def compute_models():
             P_mat = np.zeros((nS, nA, nS))
-            reward = np.zeros((nS, nA, nS))
+            reward = np.zeros((nS, nA, nS)) - 1.
             allowed_actions = []
             for s in range(nS):
                 allowed_actions.append([1,1,1,1])

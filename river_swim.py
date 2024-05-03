@@ -34,7 +34,7 @@ class River(DiscreteEnv):
             large (int, optional): large reward. Defaults to 10000.
             seed (float, optional): pseudo-random generator seed. Default to None.
     """
-    def __init__(self, nS, mu, small=5, large=10000, seed=None, render_mode=None):
+    def __init__(self, nS, mu, small=5, large=10000, seed=None, render_mode=None, r_shape=False):
         
         self.nS = nS
         self.window_nS = 400
@@ -43,7 +43,8 @@ class River(DiscreteEnv):
         
         self.render_mode = render_mode
 
-        P, P_mat, nA = self.generate_env(nS, small, large)
+        P, P_mat, nA = self.generate_env(nS, small, large, r_shape)
+        self.reward_range = (small, large)
         self.nA = nA 
         self.P_mat = P_mat
         self.P = P
@@ -61,9 +62,9 @@ class River(DiscreteEnv):
         self.reset(seed=seed)
 
 
-    def generate_env(self, nS, small, large):
+    def generate_env(self, nS, small, large, r_shape):
         # Generate river parameters using the auxiliary function    
-        nS, nA, p, r = generate_river(nS, small, large)
+        nS, nA, p, r = generate_river(nS, small, large, r_shape)
 
         # Parameter initialization
         self.reward = r
@@ -86,7 +87,7 @@ class River(DiscreteEnv):
                     # Get the reward associated to the transition from s->s1, when a is picked
                     reward = r[s][a][s1]
                     
-                    done = self.is_terminal(s1)
+                    done = self.is_terminal(s1) and reward != 0
 
                     # Build P[s][a] that is a list of tuples, containint the probability of that move, the next state, the associated reward and a termination flag
                     # The termination flag is set to True if the reward is different from 0, meaning that the agent reached the goal
@@ -118,16 +119,13 @@ class River(DiscreteEnv):
         self.s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
 
-        if self.render_mode == "human":
-            self._render_frame()
-
         return int(self.s), {"prob":self.mu[int(self.s)]}
     
     """
         Check if the state is terminal
     """
     def is_terminal(self, state):
-        return int(state) == self.nS-1
+        return int(state) == self.nS-1 or int(state) == 0
     
 
     """
@@ -151,136 +149,4 @@ class River(DiscreteEnv):
         # update last action
         self.lastaction = a
 
-        if self.render_mode == "human":
-            self._render_frame()
-
         return int(s), r, {"done":done}, {"prob": p}
-
-    def _render_frame(self):
-        if self.window is None and self.render_mode == "human":
-            pygame.init()
-            pygame.display.init()
-            self.window = pygame.display.set_mode(
-                (self.window_nS, 50)  # Make the window wider and less tall
-            )
-        if self.clock is None and self.render_mode == "human":
-            self.clock = pygame.time.Clock()
-
-        canvas = pygame.Surface((self.window_nS, 50))  # Adjust canvas nS
-        canvas.fill((255, 255, 255))
-        pix_square_nS = self.window_nS / self.nS  # Adjust for single line
-
-        # Draw the target at the last position
-        pygame.draw.rect(
-            canvas,
-            (255, 0, 0),
-            pygame.Rect(
-                pix_square_nS * (self.nS - 1),  # X coordinate at the far right
-                0,  # Y coordinate, centered on the line
-                pix_square_nS, pix_square_nS)  # Width and height of the rectangle
-        )
-
-        # Draw the agent as a circle
-        pygame.draw.circle(
-            canvas,
-            (0, 0, 255),
-            (int((self.s + 0.5) * pix_square_nS), 25),  # Centered on the line
-            int(pix_square_nS / 3)
-        )
-
-        for x in range(self.nS + 1):
-            pygame.draw.line(
-                canvas,
-                0,
-                (0, pix_square_nS * x),
-                (self.window_nS, pix_square_nS * x),
-                width=3,
-            )
-            pygame.draw.line(
-                canvas,
-                0,
-                (pix_square_nS * x, 0),
-                (pix_square_nS * x, self.window_nS),
-                width=3,
-            )
-
-        if self.render_mode == "human":
-            self.window.blit(canvas, canvas.get_rect())
-            pygame.event.pump()
-            pygame.display.update()
-            self.clock.tick(self.metadata["render_fps"])
-        else:  # rgb_array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
-
-    def _rendeer_frame(self):
-        if self.window is None and self.render_mode == "human":
-            pygame.init()
-            pygame.display.init()
-            self.window = pygame.display.set_mode(
-                (self.window_nS, self.window_nS)
-            )
-        if self.clock is None and self.render_mode == "human":
-            self.clock = pygame.time.Clock()
-
-        canvas = pygame.Surface((self.window_nS, 1))
-        canvas.fill((255, 255, 255))
-        pix_square_nS = self.window_nS / self.nS  # The nS of a single grid square in pixels
-
-        # First we draw the target
-        pygame.draw.rect(
-            canvas,
-            (255, 0, 0),
-            pygame.Rect(
-                pix_square_nS * (self.nS-1),
-                (pix_square_nS, pix_square_nS),
-            ),
-        )
-        # Now we draw the agent
-        pygame.draw.circle(
-            canvas,
-            (0, 0, 255),
-            (self.s + 0.5) * pix_square_nS,
-            pix_square_nS / 3,
-        )
-
-        # Finally, add some gridlines
-        for x in range(self.nS + 1):
-            pygame.draw.line(
-                canvas,
-                0,
-                (0, pix_square_nS * x),
-                (self.window_nS, pix_square_nS * x),
-                width=3,
-            )
-            pygame.draw.line(
-                canvas,
-                0,
-                (pix_square_nS * x, 0),
-                (pix_square_nS * x, self.window_nS),
-                width=3,
-            )
-
-        if self.render_mode == "human":
-            # The following line copies our drawings from `canvas` to the visible window
-            self.window.blit(canvas, canvas.get_rect())
-            pygame.event.pump()
-            pygame.display.update()
-
-            # We need to ensure that human-rendering occurs at the predefined framerate.
-            # The following line will automatically add a delay to keep the framerate stable.
-            self.clock.tick(self.metadata["render_fps"])
-        else:  # rgb_array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
-
-    def render(self):
-        if self.render_mode == "rgb_array":
-            return self._render_frame()
-            
-    def close(self):
-        if self.window is not None:
-            pygame.display.quit()
-            pygame.quit()
