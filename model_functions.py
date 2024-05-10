@@ -2,6 +2,10 @@ import numpy as np
 from gymnasium import Env
 from scipy.special import softmax
 import math
+from utils import stochastic_argmax
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
 
 ######################### Model Functions #########################
 
@@ -55,15 +59,13 @@ def get_policy(Q, det=True):
 
     return (np.ndarray): the probability of moving from state s to state sprime under policy pi [nS, nS] 
 """
-def compute_transition_kernel(P_mat, pi):
-    nS, nA = pi.shape
-    P_sprime_s = np.zeros((nS, nS), dtype='float64')
-    for s in range(nS):
-        for a in range(nA):
-            for s_prime in range(nS):
-                P_sprime_s[s][s_prime] += pi[s, a] * P_mat[s][a][s_prime]
-    return P_sprime_s
-
+def compute_transition_kernel(P_mat, xi, tau, pi):
+    P_mat_tau = (1-tau)*P_mat + tau*xi
+    
+    if torch.is_tensor(P_mat): # Tensor version
+        return torch.einsum('san,sa->sn', P_mat_tau, pi)
+    else: # Numpy version
+        return np.einsum('san,sa->sn', P_mat_tau, pi)
 
 ######################### Value Functions #########################
 """
@@ -74,11 +76,13 @@ def compute_transition_kernel(P_mat, pi):
     return (np.ndarray): the value function as V(s) = sum_a Q(s,a) * pi(a|s) [nS]
 """
 def compute_V_from_Q(Q, pi):
-    V = np.zeros(Q.shape[0])
-    for s in range(Q.shape[0]):
-        for a in range(Q.shape[1]):
-            V[s] += Q[s,a]*pi[s,a]
-    return V
+
+    if torch.is_tensor(Q): # Tensor version
+        return (Q * pi).sum(dim=1)
+    else: # Numpy version
+        V = np.sum(Q*pi, axis=1)
+        return V
+
 
 """
     Extract the state action value function from a given state action nextstate value function Q = sum_s' P(s'|s,a) * U(s,a,s')
@@ -106,11 +110,12 @@ def compute_Q_from_U(P_mat, U):
     return (np.ndarray): the state action nextstate value function [nS, nA, nS]
 """
 def compute_U_from_V(reward, gamma, V):
-    nS, nA, _ = reward.shape
-    U = np.zeros((nS, nA, nS))
-    for s in range(nS):
-        for a in range(nA):
-            U[s, a] = reward[s, a] + gamma*V
+
+    if torch.is_tensor(reward): # Tensor version
+        V_exp = V.unsqueeze(0).unsqueeze(0)
+        U = reward + gamma*V_exp
+    else: # Numpy version
+        U = reward + gamma*V.reshape(1, 1, -1)
     return U
 
 
@@ -152,12 +157,18 @@ def compute_model_advantage_function(U, Q):
         - A (np.ndarray): the policy advantage function [nS, nA]
     return (np.ndarray): the relative policy advantage function [nS]
 """
-def compute_relative_policy_advantage_function(pi_prime, pi, Q):
-    nS, _ = pi.shape
-    rel_pol_adv = np.zeros(nS)
-    for s in range(nS):
-        delta_pol = pi_prime[s] - pi[s]
-        rel_pol_adv[s] = np.matmul(delta_pol, np.transpose(Q[s]))
+def compute_relative_policy_advantage_function(pi_prime, pi, Q,):
+
+    if torch.is_tensor(pi_prime): # Tensor version
+        delta_pol = pi_prime - pi
+        rel_pol_adv = (delta_pol * Q).sum(dim=1)
+    else: # Numpy version
+        nS, _ = pi.shape
+        rel_pol_adv = np.zeros(nS)
+        for s in range(nS):
+            delta_pol = pi_prime[s] - pi[s]
+            rel_pol_adv[s] = np.matmul(delta_pol, np.transpose(Q[s]))
+    
     return rel_pol_adv
 
 """
@@ -184,14 +195,19 @@ def compute_relative_policy_advantage_function_v2(pi_prime, A):
     return (np.ndarray): the relative model advantage function [nS, nA]
 """
 def compute_relative_model_advantage_function(P_mat, xi, U):
-    nS, nA, _ = U.shape
-    rel_model_adv = np.zeros((nS, nA))
-    for s in range(nS):
-        for a in range(nA):
-            delta_model = P_mat[s][a] - xi
-            rel_model_adv[s, a] = np.matmul(delta_model, np.transpose(U[s, a]))
-    return rel_model_adv
 
+    if torch.is_tensor(P_mat): # Tensor version
+        Xi = xi.unsqueeze(0).unsqueeze(0) # shape [1, 1, nS]
+        delta_model = P_mat - Xi
+        rel_model_adv =(delta_model * U).sum(dim=2)
+    else: # Numpy version
+        nS, nA, _ = U.shape
+        rel_model_adv = np.zeros((nS, nA))
+        for s in range(nS):
+            for a in range(nA):
+                delta_model = P_mat[s][a] - xi
+                rel_model_adv[s, a] = np.matmul(delta_model, np.transpose(U[s, a]))
+    return rel_model_adv
 
 """
     Compute the expected policy advantage \mathcal{A}_pi'_pi = sum_s d(s) * A_pi'_pi(s)
@@ -201,7 +217,11 @@ def compute_relative_model_advantage_function(P_mat, xi, U):
     return (float): the expected policy advantage as a scalar value
 """
 def compute_expected_policy_advantage(rel_policy_adv, d):
-    pol_adv = np.matmul(d, np.transpose(rel_policy_adv))
+
+    if torch.is_tensor(rel_policy_adv): # Tensor version
+        pol_adv = (d * rel_policy_adv).sum().item()
+    else: # Numpy version
+        pol_adv = np.matmul(d, np.transpose(rel_policy_adv))
     return pol_adv
 
 """
@@ -212,12 +232,16 @@ def compute_expected_policy_advantage(rel_policy_adv, d):
     return (float): the discounted distribution relative model advantage function as a scalar
 """
 def compute_expected_model_advantage(rel_model_adv, delta):
-    model_adv = 0
-    nS, _ = delta.shape
-    for s in range(nS):
-        model_adv +=  np.matmul(delta[s], np.transpose(rel_model_adv[s]))
-    return model_adv
 
+    if torch.is_tensor(rel_model_adv): # Tensor version
+        model_adv = (delta * rel_model_adv).sum().item()
+    else: # Numpy version
+        model_adv = 0
+        nS, _ = delta.shape
+        for s in range(nS):
+            model_adv +=  np.matmul(delta[s], np.transpose(rel_model_adv[s]))
+
+    return model_adv
 ######################### Performance Metrics #########################
 """
     Compute the theoretical discounted sum of returns as J = 1/(1-gamma) sum_s d(s) * sum_a pi(a|s) * R(s,a)
@@ -259,13 +283,28 @@ def compute_expected_j(V, mu ):
         - tau (float): teleport probability
     return (np.ndarray): the discount state distribution as a vector [nS]
 """
-def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau):
+def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    
+    if torch.is_tensor(P_mat): # Tensor version
+        return compute_d_from_tau_tensor(mu, P_mat, xi, pi, gamma, tau, device)
+    else: # Numpy version
+        nS, nA = pi.shape
+        I = np.eye(nS)
+        Xi = np.tile(xi.astype('float64'), nS).reshape((nS, nS))
+        P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
+
+        inv = np.linalg.inv(I - gamma*P_sprime_s)
+        d = np.matmul((1-gamma)*mu, inv)
+        return d
+
+def compute_d_from_tau_tensor(mu, P_mat, xi, pi, gamma, tau, device):
     nS, nA = pi.shape
-    I = np.eye(nS)
-    Xi = np.tile(xi.astype('float64'), nS).reshape((nS, nS))
-    P_sprime_s = compute_transition_kernel(P_mat, pi)
-    inv = np.linalg.inv(I - gamma*(1-tau)*P_sprime_s-tau*gamma*Xi)
-    d = np.matmul((1-gamma)*mu, inv)
+    I = torch.eye(nS).to(device)
+    Xi = xi.repeat(nS, 1).T
+    P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
+
+    inv = torch.inverse(I - gamma*P_sprime_s)
+    d = torch.matmul((1-gamma)*mu, inv)
     return d
 
 """
@@ -281,7 +320,7 @@ def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau):
 def compute_grad_d_from_tau(P_mat, xi, mu, pi, gamma, tau):
     nS, _ = pi.shape
     I = np.eye(nS)
-    P_sprime_s = compute_transition_kernel(P_mat, pi)
+    P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
 
     Xi = np.tile(xi, nS).reshape((nS, nS))
     model_diff = Xi-P_sprime_s
@@ -303,11 +342,7 @@ def compute_grad_d_from_tau(P_mat, xi, mu, pi, gamma, tau):
     return (np.ndarray): the discount state action distribution under policy pi as [nS, nA]
 """
 def compute_delta(d, pi):
-    delta = np.zeros(pi.shape)
-    nS, nA = pi.shape
-    for s in range(nS):
-        for a in range(nA):
-            delta[s,a] = pi[s, a] * d[s]
+    delta = pi * d[:, None]
     return delta
 
 ######################### Difference Metrics #########################
@@ -317,17 +352,11 @@ def compute_delta(d, pi):
         - Q (np.ndarray): the state action value function [nS, nA]
     return (float): the superior difference between any two elements of the state action value function Q
 """
-def get_sup_difference_Q(Q):
-    return np.max(Q) - np.min(Q)
+def get_sup_difference(value_function):
+    if torch.is_tensor(value_function):
+        return (torch.max(value_function) - torch.min(value_function)).item()
+    return np.max(value_function) - np.min(value_function)
 
-"""
-    Compute the superior difference between any two elements of the U function
-    Args:
-        - U (np.ndarray): the state action next state value function [nS, nA, nS]
-    return (float): the superior difference between any two elements of the state action next state value function U
-"""
-def get_sup_difference_U(U):
-    return np.max(U) - np.min(U)
 
 
 """
@@ -338,6 +367,12 @@ def get_sup_difference_U(U):
     return (float): the superior of the l1 norm of the difference between two policies
 """
 def get_d_inf_policy(pi, pi_prime):
+
+    if torch.is_tensor(pi):
+        l1_norm = torch.sum(torch.abs(pi - pi_prime), dim=1)
+        d_inf = torch.max(l1_norm)
+        return d_inf.item()
+    
     l1_norm = np.sum(np.abs(pi - pi_prime), axis=1)
     d_inf = np.max(l1_norm)
     return d_inf
@@ -350,6 +385,15 @@ def get_d_inf_policy(pi, pi_prime):
     return (float): the superior of the l1 norm of the difference between two probability transition functions
 """
 def get_d_inf_model(P_mat, xi):
+
+    if torch.is_tensor(P_mat):
+        nS, nA = P_mat.shape[0], P_mat.shape[1]
+        Xi = xi.unsqueeze(0).unsqueeze(1).expand(nS,nA,nS)
+        l1_norm = torch.sum(torch.abs(P_mat - Xi), dim=2)
+        max_over_actions = torch.max(l1_norm, dim=1).values
+        d_inf = torch.max(max_over_actions)
+        return d_inf.item()
+    
     nS, nA, _ = P_mat.shape
     Xi = np.tile(xi, (nA, nS)).T
     Xi = Xi.reshape((nS, nA, nS))
@@ -367,6 +411,12 @@ def get_d_inf_model(P_mat, xi):
     return (float): the expected value of the l1 norm of the difference among two policies
 """
 def get_d_exp_policy(pi, pi_prime, d):
+
+    if torch.is_tensor(pi):
+        l1_norm = torch.sum(torch.abs(pi - pi_prime), dim=1)
+        d_exp = torch.matmul(d, l1_norm)
+        return d_exp.item()
+    
     l1_norm = np.sum(np.abs(pi - pi_prime), axis=1)
     d_exp = np.matmul(d, np.transpose(l1_norm))
     return d_exp
@@ -380,6 +430,14 @@ def get_d_exp_policy(pi, pi_prime, d):
     return (float): the expected value of the l1 norm of the difference among two probability transition functions
 """
 def get_d_exp_model(P_mat, xi, delta):
+
+    if torch.is_tensor(P_mat):
+        nS, nA = P_mat.shape[0], P_mat.shape[1]
+        Xi = xi.unsqueeze(0).unsqueeze(1).expand(nS,nA,nS) # shape [1, 1, nS]
+        l1_norm = torch.sum(torch.abs(P_mat - Xi), dim=2)
+        d_exp = torch.sum(delta * l1_norm)
+        return d_exp.item()
+    
     nS, nA, _ = P_mat.shape
     Xi = np.tile(xi, (nA, nS)).T
     Xi = Xi.reshape((nS, nA, nS))
@@ -412,10 +470,10 @@ def compute_teleport_bound(alpha, tau, tau_prime, policy_adv,
                            model_adv, gamma, d_inf_policy, 
                            d_inf_model, d_exp_policy, d_exp_model, delta_U, biased=True
                            ):
-    adv = (alpha * policy_adv + abs(tau- tau_prime) * model_adv)/(1-gamma)
+    adv = (alpha * policy_adv + (tau- tau_prime) * model_adv)/(1-gamma)
     bias = 0
     if biased:
-        bias = gamma*tau*d_exp_model/(1-gamma)
+        bias = gamma*(tau+tau_prime)*d_exp_model/(1-gamma)
     diss_penalty = gamma*delta_U/(2*(1-gamma)**2) * (alpha**2*d_exp_policy*d_inf_policy 
                                                       + alpha*abs(tau-tau_prime)*d_exp_policy*d_inf_model 
                                                       + alpha*abs(tau-tau_prime)*d_exp_model*d_inf_policy 
@@ -467,16 +525,11 @@ def compute_alpha_0(policy_adv, tau, gamma, delta_U, d_exp_policy, d_inf_policy,
     return (float): the optimal value of tau_prime for alpha= 0
 """
 def compute_tau_prime_0(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, biased=True):
-    sign = - model_adv
-    adv = (1-gamma)*(model_adv)/(gamma**2*delta_U*d_exp_model*d_inf_model)
-    bias = 0
-    if biased:
-        bias = (1-gamma)*(gamma*d_exp_model)/(gamma**2*delta_U*d_exp_model*d_inf_model)
-    tau_prime = 0
-    if(sign <= 0):
-        tau_prime = tau - adv -bias
-    else:
-        tau_prime = tau + adv - bias
+    
+    common_terms = (1-gamma)/(gamma**2*delta_U*d_exp_model*d_inf_model) 
+    bias = 0 if not biased else gamma*d_exp_model
+    tau_prime = tau - (model_adv + bias)*common_terms
+
     return round(tau_prime, 5)
 
 """
@@ -493,87 +546,79 @@ def compute_tau_prime_0(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model
     return (float): the optimal value of tau_prime for alpha= 1
 """
 def compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, d_inf_policy, d_exp_policy, biased=True):
-    sign = 1/(2*gamma) * (d_exp_policy/d_exp_model + d_inf_policy/d_inf_model) - (1-gamma)*(model_adv+gamma*d_exp_model)/(gamma**2*delta_U*d_exp_model*d_inf_model)
-    tau_prime_0 = 0
-    adv = (1-gamma)*(model_adv)/(gamma**2*delta_U*d_exp_model*d_inf_model)
-    bias = 0
-    if biased:
-        bias = (1-gamma)*(gamma*d_exp_model)/(gamma**2*delta_U*d_exp_model*d_inf_model)
+    
+    common_terms = (1-gamma)/(gamma**2*delta_U*d_exp_model*d_inf_model) 
+    bias = 0 if not biased else gamma*d_exp_model
     diss = 1/(2*gamma) * (d_exp_policy/d_exp_model + d_inf_policy/d_inf_model)
-    if sign <= 0: #Tau_prime is smaller than tau
-        tau_prime_0 = tau - adv + diss -bias
-    else:
-        tau_prime_0 = tau + adv - diss - bias 
-    return round(tau_prime_0, 5)
+    tau_prime = tau - (model_adv + bias)*common_terms + diss
+
+    return round(tau_prime, 5)
 
 def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_exp_pol,
                                        d_inf_model, d_exp_model, tau, gamma, biased=True):
-    # refuse tau' if tau' < tau
-    optimal_values = []
-    if d_inf_pol != 0 and d_exp_pol != 0:
-        # optimal value for alpha with tau'=tau
-        alpha_tau = compute_alpha_tau(pol_adv, gamma, delta_U, d_exp_pol, d_inf_pol)
-        if math.isnan(alpha_tau):
-            print("pol_adv: {}, gamma: {}, delta_U: {}, d_exp_pol: {}, d_inf_pol: {}".format(pol_adv, gamma, delta_U, d_exp_pol, d_inf_pol))
-        if alpha_tau >= 0 and alpha_tau <= 1:
-            optimal_values.append((round(alpha_tau, 5), round(tau, 5)))
-        """elif alpha_tau < 0:
-            optimal_values.append((0, tau))
-        else:
-            optimal_values.append((1, tau))"""
-        
-        # optimal value for alpha with tau'=0
-        alpha_0 = compute_alpha_0(pol_adv, tau, gamma, delta_U, d_exp_pol, d_inf_pol, d_exp_model, d_inf_model)
-        if math.isnan(alpha_0):
-            print("pol_adv: {}, gamma: {}, delta_U: {}, d_exp_pol: {}, d_inf_pol: {}, d_exp_model: {}, d_inf_model: {}".format(pol_adv, gamma, delta_U, d_exp_pol, d_inf_pol, d_exp_model, d_inf_model))
-        if alpha_0 >= 0 and alpha_0 <= 1:
-            optimal_values.append((round(alpha_0,5), 0.))
-        """elif alpha_0 < 0:
-            optimal_values.append((0, 0))
-        else:
-            optimal_values.append((1, 0))"""
     
-    # optimal value for tau' with alpha=0
-    tau_prime_0 = compute_tau_prime_0(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, biased=biased)
-    if math.isnan(tau_prime_0):
-        print("model_adv: {}, gamma: {}, delta_U: {}, d_exp_model: {}, d_inf_model: {}".format(model_adv, gamma, delta_U, d_exp_model, d_inf_model))
-    if tau_prime_0 >= 0 and tau_prime_0 <= 1:
-        optimal_values.append((0., round(tau_prime_0,5)))
-    elif tau_prime_0 < 0:
-        optimal_values.append((0., 0.))
-    else:
-        print("Not valid tau_prime_0: {}".format(tau_prime_0))
+    optimal_values = []
+    
+    if (pol_adv > 0):
+        # policy evaluation temrs
+        if d_inf_pol != 0 and d_exp_pol != 0:
+            # optimal value for alpha with tau'=tau
+            alpha_tau = compute_alpha_tau(pol_adv, gamma, delta_U, d_exp_pol, d_inf_pol)
+            if alpha_tau >= 0:
+                optimal_values.append((min(1,round(alpha_tau, 5)), round(tau, 5)))
+            
+            # optimal value for alpha with tau'=0
+            alpha_0 = compute_alpha_0(pol_adv, tau, gamma, delta_U, d_exp_pol, d_inf_pol, d_exp_model, d_inf_model)
+            if alpha_0 >= 0 and alpha_0 <= 1:
+                optimal_values.append((min(1, round(alpha_0,5)), 0.))
 
-    # optimal value for tau' with alpha=1
-    tau_prime_1 = compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, d_inf_pol, d_exp_pol, biased=biased)     
-    if math.isnan(tau_prime_1):
-        print("model_adv: {}, gamma: {}, delta_U: {}, d_exp_model: {}, d_inf_model: {}, d_inf_pol: {}, d_exp_pol: {}".format(model_adv, gamma, delta_U, d_exp_model, d_inf_model, d_inf_pol, d_exp_pol))
-    if tau_prime_1 >= 0 and tau_prime_1 <= 1:
-        optimal_values.append((1., round(tau_prime_1,5)))
-    """elif tau_prime_1 < 0:
-        optimal_values.append((1, 0))
-    else:
-        optimal_values.append((1, tau))"""
+    if model_adv > 0:
+        # model evaluation terms
+        if d_inf_model != 0 and d_exp_model != 0:
+            # optimal value for tau' with alpha=0
+            tau_prime_0 = compute_tau_prime_0(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, biased=biased)
+            if tau_prime_0 >= 0 and tau_prime_0 <= 1:
+                optimal_values.append((0., min(round(tau, 5), round(tau_prime_0, 5))))
+            
+            # optimal value for tau' with alpha=1
+            tau_prime_1 = compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, d_inf_pol, d_exp_pol, biased=biased)     
+            if tau_prime_1 >= 0 and tau_prime_1 <= 1:
+                optimal_values.append((1., min(round(tau, 5), round(tau_prime_1, 5))))
 
+    if len(optimal_values) == 0:
+        print("No valid pairs found")
+        optimal_values.append((0., round(tau, 5))) # No valid pairs found
+    
     return optimal_values
 
-def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds):
-    alpha_star, tau_star = optimal_pairs[np.argmax(teleport_bounds)]
-    if (0, tau_star) and (1, tau_star) in optimal_pairs:
-        alpha_star = 1
-    if tau_star < 1e-3:
+def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-4):
+    alpha_star, tau_star = optimal_pairs[stochastic_argmax(teleport_bounds)]
+    if tau_star < threshold:
         tau_star = 0
     return (alpha_star, tau_star)
 
 
+"""
+    Compute the teleport bound B(alpha, tau) associated to the pair (alpha=alpha_0, tau_prime=tau)
+    Args:
+        - tau (float): the teleport probability
+        - policy_adv (np.ndarray): the policy advantage function [nS, nA]
+        - gamma (float): discount factor
+        - d_inf_policy (float): the superior of the l1 norm of the difference between two policies
+        - d_exp_policy (float): the expected value of the l1 norm of the difference among two policies
+        - d_inf_model (float): the superior of the l1 norm of the difference between two probability transition functions
+        - d_exp_model (float): the expected value of the l1 norm of the difference among two probability transition functions
+        - delta_U (float): the difference between the two value functions
+"""
 def compute_teleport_bound_alpha_tau(tau, policy_adv, 
                            gamma, d_inf_policy, 
                            d_exp_policy, d_exp_model, delta_U, biased=True
                            ):
+    
     adv = policy_adv**2/(2*gamma*delta_U*d_exp_policy*d_inf_policy)
     bias = 0
     if biased:
-        bias = gamma*tau*d_exp_model/(1-gamma)
+        bias = 2*gamma*tau*d_exp_model/(1-gamma)
     return adv-bias
 
 
@@ -594,6 +639,7 @@ def compute_teleport_bound_alpha_tau(tau, policy_adv,
 """
 def compute_teleport_bound_alpha_0(tau, policy_adv, model_adv, gamma, d_inf_policy, d_exp_policy, 
                                    d_inf_model, d_exp_model, delta_U):
+    
     adv = policy_adv**2/(2*gamma*delta_U*d_exp_policy*d_inf_policy) + tau*model_adv/(1-gamma)
     bias = gamma*tau*d_exp_model/(1-gamma)
     diss_penalty = tau*policy_adv/(2*(1-gamma))*(d_inf_model/d_inf_policy + d_exp_model/d_exp_policy)
@@ -616,9 +662,9 @@ def compute_teleport_bound_alpha_0_test(tau, policy_adv, model_adv, gamma, d_inf
         - delta_U (float): the difference between the two value functions
     return (float): the teleport lower bound for performance improvement
 """
-def compute_teleport_bound_0_tau(tau, model_adv, gamma, d_inf_model, d_exp_model, delta_U):
-    adv = model_adv**2/(2*gamma**2 *delta_U*d_exp_model*d_inf_model) + model_adv/(gamma*delta_U*d_inf_model) + d_exp_model/(2*delta_U*d_inf_model)
-    bias = 2*gamma*tau*d_exp_model/(1-gamma)
+def compute_teleport_bound_0_tau(tau, model_adv, gamma, d_inf_model, d_exp_model, delta_U, biased=True):
+    adv = model_adv**2/(2*gamma**2 *delta_U*d_exp_model*d_inf_model) 
+    bias = 0 if not biased else 2*gamma*tau*d_exp_model/(1-gamma) - model_adv/(gamma*delta_U*d_inf_model) - d_exp_model/(2*delta_U*d_inf_model)
     return adv-bias
 
 
@@ -627,7 +673,7 @@ def compute_teleport_bound_0_tau(tau, model_adv, gamma, d_inf_model, d_exp_model
 """
 def compute_teleport_bound_1_tau(tau, policy_adv, model_adv, gamma, d_inf_model, 
                                  d_inf_policy, d_exp_model, d_exp_policy, delta_U):
-    sign = 1/(2*gamma) * (d_exp_policy/d_exp_model + d_inf_policy/d_inf_model) - (1-gamma)*(model_adv+gamma*d_exp_model)/(gamma**2*delta_U*d_exp_model*d_inf_model)
+    
     adv = model_adv**2/(2*gamma**2 *delta_U*d_exp_model*d_inf_model) + d_exp_model/(2*delta_U*d_inf_model)
     adv += policy_adv/(1-gamma) + delta_U/(8*(1-gamma)**2*d_inf_model*d_exp_model)*(d_inf_model*d_exp_policy + d_inf_policy*d_exp_model)**2
     bias = 2*gamma*tau*d_exp_model/(1-gamma)
@@ -635,14 +681,10 @@ def compute_teleport_bound_1_tau(tau, policy_adv, model_adv, gamma, d_inf_model,
                                            gamma**2*delta_U*d_exp_policy*d_inf_policy/(1-gamma))
     term_1 = model_adv/(gamma*delta_U*d_inf_model)
     term_2 = 1/(2*(1-gamma))* d_exp_model*(d_inf_policy/d_inf_model + d_exp_policy/d_exp_model)
-    
-    if sign <= 0: # tau_prime is smaller than tau
-        adv += term_1
-        diss_penalty += term_2
-    else:
-        adv -= term_1
-        diss_penalty -= term_2
 
+    adv += term_1
+    diss_penalty += term_2
+   
     return adv - diss_penalty - bias
 
 

@@ -55,16 +55,20 @@ class TMDP(Env):
         if self.env.np_random.random() <= self.tau:
             # Teleport branch
             s_prime = categorical_sample(self.xi, self.env.np_random)
-            self.lastaction = a
+            self.env.lastaction = a
             r = self.env.reward[int(self.env.s), a, int(s_prime)]
+            self.env.lastreward = r
             self.env.s = s_prime
+            done = self.env.is_terminal(self.env.s)
+            if done:
+                s_prime, _ = self.env.reset()
 
             if self.env.render_mode == "human":
                 self.env.render()
 
             prob = self.xi[s_prime]*self.tau
             # In this case the done flag signal that a teleport happened
-            done = self.env.is_terminal(self.env.s) and r != 0
+            
             return self.env.s, r, {"done":done, "teleport": True}, {"prob":prob}
         else:
             #print("Following regular probability transition function")
@@ -81,24 +85,11 @@ class TMDP(Env):
     def update_tau(self, tau):
         self.tau = tau
         if tau == 0:
-            # Original problem
-            P_tau = self.env.P
             P_mat_tau = self.env.P_mat
         else:
             # Simplified problem
-            P_tau = {s: {a: [] for a in range(self.env.nA)} for s in range(self.env.nS)}
-            P_mat_tau = np.zeros(shape=(self.env.nS, self.env.nA, self.env.nS))
+            P_mat_tau = (1 - tau) * self.env.P_mat + tau * self.xi[None, None, :]  # Broadcasting xi
 
-            for s in range(self.env.nS):
-                for a in range(self.env.nA):
-                    for s1 in range(self.env.nS):
-                        prob = self.env.P_mat[s][a][s1]
-                        prob_tau = prob * (1-tau) + self.xi[s1]*tau
-                        reward = self.env.reward[s][a][s1]
-                        P_tau[s][a].append((prob_tau, s1, reward, self.env.is_terminal(s1)))
-                        P_mat_tau[s][a][s1] = prob_tau
-
-        self.P_tau = P_tau
         self.P_mat_tau = P_mat_tau
 
     def reset(

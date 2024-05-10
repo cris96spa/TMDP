@@ -63,3 +63,11 @@ def aggregate_results(results, different_count, z=1.96):
             r['std_delta_q'] = np.std(r['delta_q'])
             r['ci_delta_q'] = z * r['std_delta_q']/np.sqrt(len(r['J']))
     return res
+
+
+def stochastic_argmax(value_list):
+    max_indices = np.where(value_list == np.max(value_list))[0]
+    if len(max_indices) == 1:
+        return max_indices[0]
+    
+    return np.random.choice(max_indices)

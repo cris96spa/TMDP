@@ -181,6 +181,8 @@ class FrozenLakeEnv(DiscreteEnv):
         self.nA = nA = 4
         self.nS = nS = nrow * ncol
         self.r_shape = r_shape
+        self.lastaction = None
+        self.lastreward = None
         if r_shape:
             self.reward_range = (-1., nS)
         else:
@@ -214,7 +216,7 @@ class FrozenLakeEnv(DiscreteEnv):
             reward = float(newletter == b"G")
             if self.r_shape:
                 if reward:
-                    reward = nS
+                    reward = nS*10000
                 else:
                     reward = -1.
             return newstate, reward, terminated
@@ -226,7 +228,10 @@ class FrozenLakeEnv(DiscreteEnv):
                     li = self.P[s][a]
                     letter = desc[row, col]
                     if letter in b"GH":
-                        li.append((1.0, s, 0, True))
+                        if not r_shape:
+                            li.append((1.0, s, 0, True))
+                        else:
+                            li.append((1.0, s, -1, True))
                     else:
                         if is_slippery:
                             for b in [(a - 1) % 4, a, (a + 1) % 4]:
@@ -238,7 +243,9 @@ class FrozenLakeEnv(DiscreteEnv):
         
         def compute_models():
             P_mat = np.zeros((nS, nA, nS))
-            reward = np.zeros((nS, nA, nS)) - 1.
+            reward = np.zeros((nS, nA, nS))
+            if self.r_shape:
+                reward -= 1.
             allowed_actions = []
             for s in range(nS):
                 allowed_actions.append([1,1,1,1])
@@ -286,6 +293,7 @@ class FrozenLakeEnv(DiscreteEnv):
         p, s, r, done = transitions[i]
         self.s = s
         self.lastaction = a
+        self.lastreward = r
 
         if self.render_mode == "human":
             self.render()
@@ -305,6 +313,7 @@ class FrozenLakeEnv(DiscreteEnv):
         super().reset(seed=seed)
         self.s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
+        self.lastreward = None
 
         if self.render_mode == "human":
             self.render()

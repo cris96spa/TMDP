@@ -40,7 +40,8 @@ class River(DiscreteEnv):
         self.window_nS = 400
         self.window = None
         self.clock = None
-        
+        self.lastaction = None
+        self.lastreward = None
         self.render_mode = render_mode
 
         P, P_mat, nA = self.generate_env(nS, small, large, r_shape)
@@ -49,7 +50,7 @@ class River(DiscreteEnv):
         self.P_mat = P_mat
         self.P = P
         self.mu = mu
-
+        
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Discrete(nS)
 
@@ -118,15 +119,18 @@ class River(DiscreteEnv):
         super().reset(seed=seed)
         self.s = categorical_sample(self.mu, self.np_random)
         self.lastaction = None
-
+        self.lastreward = None
         return int(self.s), {"prob":self.mu[int(self.s)]}
     
     """
         Check if the state is terminal
     """
     def is_terminal(self, state):
-        return int(state) == self.nS-1 or int(state) == 0
-    
+        if self.lastreward is None:
+            return int(state) == self.nS-1 or int(state) == 0
+        else:
+            return  (int(state) == self.nS-1 or int(state) == 0) and self.lastreward != 0 
+
 
     """
         Environment transition step implementation.
