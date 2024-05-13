@@ -12,18 +12,31 @@ class ReplayBuffer:
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
+        self.new_action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.done_memory = np.zeros(self.mem_size, dtype=np.bool_)
+        self.traj_counter = 0
     
-    def store_transition(self, state, action, reward, new_state, done):
+    def store_transition(self, state, action, reward, new_state, new_action, done):
         index = self.mem_cntr % self.mem_size
         self.state_memory[index] = state
         self.action_memory[index] = action
         self.reward_memory[index] = reward
         self.new_state_memory[index] = new_state
+        self.new_action_memory[index] = new_action
         self.done_memory[index] = done
+        if done:
+            self.traj_counter += 1
+
         self.mem_cntr += 1
     
+    def end_trajectory(self):
+        start_indx = (self.mem_cntr % self.mem_size) - 1
+        if start_indx < 0:
+            start_indx += self.mem_size
+        self.done_memory[start_indx] = True
+        self.traj_counter += 1
+
     def sample_buffer(self, batch_size):
         max_mem = min(self.mem_cntr, self.mem_size)
         batch = np.random.choice(max_mem, batch_size, replace=False)
@@ -32,8 +45,9 @@ class ReplayBuffer:
         actions = self.action_memory[batch]
         rewards = self.reward_memory[batch]
         new_states = self.new_state_memory[batch]
+        new_actions = self.new_action_memory[batch]
         done = self.done_memory[batch]
-        return states, actions, rewards, new_states, done
+        return states, actions, rewards, new_states, new_actions, done
     
     def sample_last(self, batch_size=None):
         
@@ -52,8 +66,9 @@ class ReplayBuffer:
         actions = self.action_memory[batch]
         rewards = self.reward_memory[batch]
         new_states = self.new_state_memory[batch]
+        new_actions = self.new_action_memory[batch]
         done = self.done_memory[batch]
-        return states, actions, rewards, new_states, done
+        return states, actions, rewards, new_states, new_actions, done
 
     def clear(self):
         self.mem_cntr = 0
@@ -61,8 +76,10 @@ class ReplayBuffer:
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
+        self.new_action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.done_memory = np.zeros(self.mem_size, dtype=np.bool_)
+        self.traj_counter = 0
 
     def len(self):
         return min(self.mem_cntr, self.mem_size)

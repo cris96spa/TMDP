@@ -1,0 +1,15 @@
+artifact_uri: file:///c:/Users/crist/OneDrive%20-%20Politecnico%20di%20Milano/Polimi/Tesi/TMDP/mlruns/725823697726956658/20cd9444ac89447c98022b55146542ba/artifacts
+end_time: 1715592170878
+entry_point_name: ''
+experiment_id: '725823697726956658'
+lifecycle_stage: active
+run_id: 20cd9444ac89447c98022b55146542ba
+run_name: learned-mole-127
+run_uuid: 20cd9444ac89447c98022b55146542ba
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1715592168529
+status: 3
+tags: []
+user_id: crist

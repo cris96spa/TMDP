@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import time
-
+from ReplayBuffer import ReplayBuffer
 
 seed = None
 #seed = 73111819126096741712253486776689977811
@@ -502,7 +502,7 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                     k = 0
             episode += 1
 
-            if episode == episodes-1 and alpha_star > 1 and tmdp.tau == 0 and stucked_count == 0:
+            if episode == episodes-1 and alpha_star > 0 and tmdp.tau == 0 and stucked_count == 0:
                 episodes += 100000
 
             if episode < episodes-1: # move to next time step
@@ -524,6 +524,245 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
         if( (len(batch) != 0 and len(batch) % batch_nS == 0) or done or terminated):
             # Extract previous policy for future comparison
             
+            # Iterate over trajectories in the batch
+            for _ in range(epochs):
+                for trajectory in batch:
+                    # Iterate over samples in the trajectory
+                    e = np.zeros((nS, nA))
+                    for j, sample in enumerate(trajectory):
+                        s, a, r, s_prime, a_prime, flags, t, k  = sample
+                        
+                        #a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[int(s_prime)]) # Q must be done on policy
+                        td_error = alpha*decay*(r + tmdp.gamma*Q[s_prime, a_prime] - Q[s,a])
+
+                        # Eligibility traces
+                        e[s,a] = 1 # Freequency heuristic with saturation
+                        if lam == 0:
+                            Q[s,a] += e[s,a]*td_error
+                        else:
+                            for s_1 in range(nS):
+                                for a_1 in range(nA):
+                                    Q[s_1,a_1] +=  e[s_1,a_1]*td_error
+                        e = tmdp.gamma*lam*e # Recency heuristic decay
+                        
+                        # Get current policy
+                        pi_ref = get_softmax_policy(theta_ref, temperature=temperature*temp_decay)
+                        V = compute_V_from_Q(Q, pi_ref)
+                        U[s,a,s_prime] += alpha*decay*(r + tmdp.gamma*V[s_prime] - U[s,a,s_prime])
+
+                        # Policy Gradient
+                        grad_log_policy = -pi_ref[s]
+                        grad_log_policy[a] += 1 # Sum 1 for the taken action
+                        grad_log_policy = grad_log_policy/(temperature*temp_decay)
+                        theta_ref[s] += alpha_pol*decay*grad_log_policy*(Q[s,a] - V[s]) # Policy parameters update
+                        ep += 1 # Increase the episode counter
+            
+            r_sum = sum(rewards)
+
+            ################################ Bound evaluation ################################
+            s_time = time.time()
+            # Get policies
+            pi_ref = get_softmax_policy(theta_ref, temperature=temperature*temp_decay)
+            pi = get_softmax_policy(theta, temperature=temperature*temp_decay)
+            
+            # Tensor conversion
+            tensor_pi_ref = torch.tensor(pi_ref, dtype=torch.float32).to(device)
+            tensor_pi = torch.tensor(pi, dtype=torch.float32).to(device)
+            tensor_Q = torch.tensor(Q, dtype=torch.float32).to(device)
+            tensor_U = torch.tensor(U, dtype=torch.float32).to(device)
+            
+            # Compute advantages
+            rel_pol_adv = compute_relative_policy_advantage_function(tensor_pi_ref, tensor_pi, tensor_Q)
+            d = compute_d_from_tau(tensor_mu, tensor_P_mat, tensor_xi, tensor_pi, tmdp.gamma, tmdp.tau)
+            pol_adv = compute_expected_policy_advantage(rel_pol_adv, d) 
+            
+            if use_delta_Q:
+                delta_U = get_sup_difference(tensor_Q)
+            else:
+                delta_U = get_sup_difference(tensor_U) 
+            if delta_U == 0:
+                delta_U = (tmdp.env.reward_range[1]-tmdp.env.reward_range[0])/(1-tmdp.gamma)
+                
+            # Compute distance metrics
+            d_inf_pol = get_d_inf_policy(tensor_pi, tensor_pi_ref)
+            d_exp_pol = get_d_exp_policy(tensor_pi, tensor_pi_ref, d)
+            
+            if( tmdp.tau > 0): # Not yet converged to the original problem
+                delta = compute_delta(d, tensor_pi)
+                rel_model_adv = compute_relative_model_advantage_function(tensor_P_mat, tensor_xi, tensor_U)
+                model_adv = compute_expected_model_advantage(rel_model_adv, delta)
+                
+                d_exp_model = get_d_exp_model(tensor_P_mat, tensor_xi, delta)
+            
+            else: # Converged to the original problem
+                model_adv = 0
+                d_exp_model = 0
+
+            
+            # Compute optimal values
+            optimal_pairs = get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U,
+                                                            d_inf_pol, d_exp_pol, d_inf_model,
+                                                            d_exp_model, tmdp.tau, tmdp.gamma, biased=biased)
+            teleport_bounds = []
+            for alpha_prime, tau_prime in optimal_pairs:
+                bound = compute_teleport_bound(alpha_prime, tmdp.tau, tau_prime, pol_adv, model_adv,
+                                                tmdp.gamma, d_inf_pol, d_inf_model,
+                                                d_exp_pol, d_exp_model, delta_U, biased=biased)
+                teleport_bounds.append(bound)
+            
+            # Get the optimal values
+            alpha_star, tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds)
+
+            print(optimal_pairs)
+            if alpha_star != 0 or tau_star != 0:
+
+                print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(alpha_star, tau_star, episode, len(rewards),teleport_count))
+            else:
+                print("No updates performed, episode: {} length: {} #teleports:{}".format(episode, len(rewards),teleport_count))
+            if r_sum > 0:
+                print("Got not null reward {}!".format(r_sum))
+
+            if tau_star == 0 and tmdp.tau != 0:
+                print("Converged to the original problem, episode {}".format(episode))
+                convergence_t = episode
+                tmdp.update_tau(tau_star)
+            elif tmdp.tau > 0:
+                tmdp.update_tau(tau_star)
+                stucked_count = 0
+
+            if alpha_star != 0:
+                theta = alpha_star*theta_ref + (1-alpha_star)*theta
+                stucked_count = 0
+
+
+            decay = max(1e-8, 1-(ep)/(episodes))
+            temp_decay = temperature + (final_temperature - temperature)*(ep/episodes)
+
+            # Reset the batch
+            batch = []
+            reward_records.append(r_sum)
+            rewards = []
+            t = 0
+            teleport_count = 0
+            e_time = time.time()
+            print("Time for bound evaluation: ", e_time - s_time)
+            if pol_adv < 0 and tmdp.tau == 0:
+                print("No further improvement possible. Episode: {}".format(episode))
+                stucked_count += 1
+                episode = min(episodes-1, episode+10000)
+                ep = min(episodes-1, ep+10000)
+                if stucked_count > 10:
+                    Qs.append(np.copy(Q))
+                    thetas.append(np.copy(theta))
+                    break
+        if episode % status_step == 0 or done or terminated:
+            #print("Mid-result status update, episode:", episode, "done:", done)
+            # Mid-result status update
+            Qs.append(np.copy(Q))
+            thetas.append(np.copy(theta))
+
+    return {"Qs": Qs, "history": history, "thetas": thetas, "reward_records": reward_records}
+
+
+def curriculum_AC_buffer(tmdp:TMDP, Q, rep_buffer:ReplayBuffer, episodes=5000,  alpha=.25, alpha_pol=.1, status_step=50000, 
+                  batch_nS=1, temperature=1.0, lam=0., biased=True, epochs=1, use_delta_Q=False,
+                  device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), final_temperature=1e-3):
+    nS, nA = Q.shape
+
+    rewards = []
+    reward_records = []
+
+    t = 0 # episode in batch counter
+    k = 0 # episode in trajectory counter
+    ep = 0 # overall episode counter
+
+    teleport_count = 0
+
+    done = False 
+    terminated = False
+
+    #Policy parameter vector, considering nA parameters for each state
+    # Random initialization
+    theta = np.zeros((nS, nA))
+    #theta = np.zeros((nS, nA))
+    theta_ref = np.zeros((nS, nA))
+
+    # State action next-state value function
+    U = np.zeros((nS, nA, nS))
+    convergence_t = 0
+    
+    # Curriculum parameters
+    alpha_star = 1
+    tau_star = 1
+  
+    # Mid-term results
+    Qs = []
+    thetas = []
+
+    decay = 1
+    temp_decay = 1
+    grad_log_policy = np.zeros(nA)
+
+    # Tensor conversion
+    tensor_mu = torch.tensor(tmdp.env.mu, dtype=torch.float32).to(device)
+    tensor_P_mat = torch.tensor(tmdp.env.P_mat, dtype=torch.float32).to(device)
+    tensor_xi = torch.tensor(tmdp.xi, dtype=torch.float32).to(device)
+    stucked_count = 0
+    episode = 0
+
+    d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
+    while episode < episodes: # Each episode is a single time step
+
+        pi = get_softmax_policy(theta, temperature=temperature*temp_decay)
+        while True:
+            s = tmdp.env.s
+            # Pick an action according to the parametric policy
+            a = select_action(pi[s])
+            # Perform a step in the environment, picking action a
+            s_prime, r, flags, p =  tmdp.step(a)
+            a_prime = select_action(pi[s_prime])
+            flags["terminated"] = terminated
+            sample = (s, a, r, s_prime, a_prime, flags['done'])
+
+            if not flags["teleport"]:
+                rep_buffer.store_transition(*sample)
+                rewards.append(r)
+                k += 1
+                t += 1
+                if flags["done"]:
+                    tmdp.reset()
+                    k = 0 # Reset the episode counter
+            else:
+                teleport_count += 1 # Increase the teleportation counter
+
+                if k > 0: # Not empty trajectory, termiated by teleportation
+                    rep_buffer.end_trajectory()
+                    k = 0 # Reset the episode counter
+            
+            episode += 1
+
+            if episode == episodes-1 and alpha_star > 1 and tmdp.tau == 0 and stucked_count == 0:
+                episodes += 100000 
+
+            if episode < episodes-1: # move to next time step
+                break   
+            else: # if reached the max num of time steps, wait for the end of the trajectory for consistency
+                print("Ending the loop")
+                terminated = True
+                flags["terminated"] = terminated
+
+                if k > 0: # Not empty trajectory, termiated by teleportation
+                    rep_buffer.end_trajectory()
+                    k = 0 # Reset the episode counter
+                break # temporary ending condition To be Removed
+                if flags["done"]:
+                    done = True
+                    break
+
+        # Processing the batch
+        if (rep_buffer.traj_counter % batch_nS == 0) or done or terminated:
+            
+
             # Iterate over trajectories in the batch
             for _ in range(epochs):
                 for trajectory in batch:

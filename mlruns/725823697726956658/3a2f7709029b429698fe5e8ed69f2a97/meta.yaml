@@ -1,0 +1,15 @@
+artifact_uri: file:///c:/Users/crist/OneDrive%20-%20Politecnico%20di%20Milano/Polimi/Tesi/TMDP/mlruns/725823697726956658/3a2f7709029b429698fe5e8ed69f2a97/artifacts
+end_time: 1715592122875
+entry_point_name: ''
+experiment_id: '725823697726956658'
+lifecycle_stage: active
+run_id: 3a2f7709029b429698fe5e8ed69f2a97
+run_name: powerful-bee-635
+run_uuid: 3a2f7709029b429698fe5e8ed69f2a97
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1715592122850
+status: 4
+tags: []
+user_id: crist

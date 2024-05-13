@@ -268,6 +268,8 @@ def compute_j(r_s_a, pi, d, gamma):
     return (float): the expected return associated to the value function V and the initial state distribution mu
 """
 def compute_expected_j(V, mu ):
+    if torch.is_tensor(V):
+        return torch.matmul(mu, V).item()
     return np.matmul(mu, np.transpose(V))
 
 ######################### Discounted State Distribution #########################

@@ -56,7 +56,7 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
             s_prime, r, flags, _ =  tmdp.step(a)
             
             if not flags["teleport"]:
-                sample = (s, a, r, s_prime, flags["done"])
+                sample = (s, a, r, s_prime, _, flags["done"])
                 rep_buffer.store_transition(*sample)
                 rewards.append(r) # Store the reward for the current step
                 v_next = 0
@@ -93,9 +93,9 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
 
             # Processing the batch
             if last:
-                states, actions, rewards, next_states, done = rep_buffer.sample_last(batch_size)
+                states, actions, rewards, next_states, _, done = rep_buffer.sample_last(batch_size)
             else:
-                states, actions, rewards, next_states, done = rep_buffer.sample_buffer(batch_size)
+                states, actions, rewards, next_states, _, done = rep_buffer.sample_buffer(batch_size)
 
             states = torch.tensor(states, dtype=torch.long).to(ref_policy.device)
             actions = torch.tensor(actions, dtype=torch.long).to(ref_policy.device).unsqueeze(dim=1)
@@ -291,7 +291,7 @@ def curriculum_AC_NN(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, v_net:V
             s_prime, r, flags, _ =  tmdp.step(a)
             
             if not flags["teleport"]:
-                sample = (s, a, r, s_prime, flags["done"])
+                sample = (s, a, r, s_prime, _, flags["done"])
                 rep_buffer.store_transition(*sample)
                 rewards.append(r) # Store the reward for the current step
                 v_next = 0
@@ -324,7 +324,7 @@ def curriculum_AC_NN(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, v_net:V
             r_sum = sum(rewards)
 
             # Processing the batch
-            states, actions, rewards, next_states, done = rep_buffer.sample_last()
+            states, actions, rewards, next_states, _, done = rep_buffer.sample_last()
             
             # Computing the discounted cumulative return along trajectories
             cum_rewards = np.zeros_like(rewards)
