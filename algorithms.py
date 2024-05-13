@@ -415,7 +415,7 @@ def compute_metrics(tmdp, Qs, Q_star,  visits_distributions, tau_prime=0., is_po
 
 def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_step=50000, 
                   batch_nS=1, temperature=1.0, lam=0., biased=True, epochs=1, use_delta_Q=False,
-                  device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+                  device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), final_temperature=1e-3):
     nS, nA = Q.shape
 
     # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
@@ -455,7 +455,6 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
     Qs = []
     thetas = []
 
-    e = np.zeros_like(Q)
     decay = 1
     temp_decay = 1
     grad_log_policy = np.zeros(nA)
@@ -464,9 +463,11 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
     tensor_mu = torch.tensor(tmdp.env.mu, dtype=torch.float32).to(device)
     tensor_P_mat = torch.tensor(tmdp.env.P_mat, dtype=torch.float32).to(device)
     tensor_xi = torch.tensor(tmdp.xi, dtype=torch.float32).to(device)
+    stucked_count = 0
+    episode = 0
 
     d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
-    for episode in range(episodes): # Each episode is a single time step
+    while episode < episodes: # Each episode is a single time step
 
         pi = get_softmax_policy(theta, temperature=temperature*temp_decay)
         while True:
@@ -478,7 +479,6 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
             a_prime = select_action(pi[s_prime])
             flags["terminated"] = terminated
             
-
             if not flags["teleport"]:
                 sample = (s, a, r, s_prime, a_prime, flags, t, k)
                 traj.append(sample)
@@ -500,6 +500,10 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                     history.append(traj)
                     traj = []
                     k = 0
+            episode += 1
+
+            if episode == episodes-1 and alpha_star > 1 and tmdp.tau == 0 and stucked_count == 0:
+                episodes += 100000
 
             if episode < episodes-1: # move to next time step
                 break   
@@ -524,6 +528,7 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
             for _ in range(epochs):
                 for trajectory in batch:
                     # Iterate over samples in the trajectory
+                    e = np.zeros((nS, nA))
                     for j, sample in enumerate(trajectory):
                         s, a, r, s_prime, a_prime, flags, t, k  = sample
                         
@@ -542,7 +547,7 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                         
                         # Get current policy
                         pi_ref = get_softmax_policy(theta_ref, temperature=temperature*temp_decay)
-                        V = compute_V_from_Q(Q, pi)
+                        V = compute_V_from_Q(Q, pi_ref)
                         U[s,a,s_prime] += alpha*decay*(r + tmdp.gamma*V[s_prime] - U[s,a,s_prime])
 
                         # Policy Gradient
@@ -623,12 +628,15 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                 tmdp.update_tau(tau_star)
             elif tmdp.tau > 0:
                 tmdp.update_tau(tau_star)
+                stucked_count = 0
 
             if alpha_star != 0:
                 theta = alpha_star*theta_ref + (1-alpha_star)*theta
+                stucked_count = 0
+
 
             decay = max(1e-8, 1-(ep)/(episodes))
-            temp_decay = temperature + (1e-3 - temperature)*(ep/episodes)
+            temp_decay = temperature + (final_temperature - temperature)*(ep/episodes)
 
             # Reset the batch
             batch = []
@@ -638,6 +646,15 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
             teleport_count = 0
             e_time = time.time()
             print("Time for bound evaluation: ", e_time - s_time)
+            if pol_adv < 0 and tmdp.tau == 0:
+                print("No further improvement possible. Episode: {}".format(episode))
+                stucked_count += 1
+                episode = min(episodes-1, episode+10000)
+                ep = min(episodes-1, ep+10000)
+                if stucked_count > 10:
+                    Qs.append(np.copy(Q))
+                    thetas.append(np.copy(theta))
+                    break
         if episode % status_step == 0 or done or terminated:
             #print("Mid-result status update, episode:", episode, "done:", done)
             # Mid-result status update

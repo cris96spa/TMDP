@@ -8,6 +8,7 @@ class ReplayBuffer:
         self.seed = random.seed(seed)
         self.mem_size = max_size
         self.mem_cntr = 0
+        self.input_shape = input_shape
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
@@ -34,7 +35,10 @@ class ReplayBuffer:
         done = self.done_memory[batch]
         return states, actions, rewards, new_states, done
     
-    def sample_recent(self, batch_size):
+    def sample_last(self, batch_size=None):
+        
+        if batch_size is None:
+            batch_size = min(self.mem_cntr, self.mem_size) # sample all elements in the buffer
 
         if self.mem_cntr < batch_size:
             raise ValueError("Not enough elements in the buffer to sample a full batch")
@@ -44,14 +48,22 @@ class ReplayBuffer:
             start_indx += self.mem_size
         
         batch = [(start_indx + i) % self.mem_size  for i in range(batch_size)]
+        states = self.state_memory[batch]
+        actions = self.action_memory[batch]
+        rewards = self.reward_memory[batch]
+        new_states = self.new_state_memory[batch]
+        done = self.done_memory[batch]
+        return states, actions, rewards, new_states, done
 
     def clear(self):
         self.mem_cntr = 0
+        input_shape = self.input_shape
         self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.done_memory = np.zeros(self.mem_size, dtype=np.bool_)
+
     def len(self):
         return min(self.mem_cntr, self.mem_size)
 

@@ -388,7 +388,7 @@ def get_d_inf_model(P_mat, xi):
 
     if torch.is_tensor(P_mat):
         nS, nA = P_mat.shape[0], P_mat.shape[1]
-        Xi = xi.unsqueeze(0).unsqueeze(1).expand(nS,nA,nS)
+        Xi = xi.unsqueeze(1) * torch.ones((nS, nA, nS)).to(xi.device)
         l1_norm = torch.sum(torch.abs(P_mat - Xi), dim=2)
         max_over_actions = torch.max(l1_norm, dim=1).values
         d_inf = torch.max(max_over_actions)
@@ -591,7 +591,7 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
     
     return optimal_values
 
-def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-4):
+def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-7):
     alpha_star, tau_star = optimal_pairs[stochastic_argmax(teleport_bounds)]
     if tau_star < threshold:
         tau_star = 0

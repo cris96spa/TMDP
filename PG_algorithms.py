@@ -16,8 +16,8 @@ import os
 def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target:QNet, 
                    q2_target:QNet, q1_func:QNet, q2_func:QNet, ref_opt:torch.optim.Optimizer, 
                    q1_opt:torch.optim.Optimizer, q2_opt:torch.optim.Optimizer, rep_buffer:ReplayBuffer, 
-                   alpha=1., alpha_u=.2, beta=.2, episodes=5000, batch_size=1, sample_steps=1,
-                   update_rate=10, biased=False):
+                   alpha=1., alpha_u=.2, beta=.2, episodes=5000, batch_size=1, traj_steps=1,
+                   update_steps=10, biased=False, use_delta_Q=False, last=False):
     
     nS, nA = tmdp.env.nS, tmdp.env.nA
     done_ = False 
@@ -37,7 +37,15 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
     rewards = []
     t = 0
     dec_alpha = alpha
-    ref_policy.soft_update(policy_pi, 1.) # Sincronize the policies
+    traj_count = 0
+    stucked_count = 0
+
+    # Tensor conversion
+    tensor_mu = torch.tensor(tmdp.env.mu, dtype=torch.float32).to(device)
+    tensor_P_mat = torch.tensor(tmdp.env.P_mat, dtype=torch.float32).to(device)
+    tensor_xi = torch.tensor(tmdp.xi, dtype=torch.float32).to(device)
+
+    d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
 
     for episode in range(episodes): # Each episode is a single time step
         
@@ -54,6 +62,7 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
                 v_next = 0
                 if flags["done"]:
                     tmdp.reset()
+                    traj_count += 1
                 else:
                     with torch.no_grad():
                         tensor_s_prime = torch.tensor([s_prime], dtype=torch.long).to(q1_func.device)
@@ -64,6 +73,7 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
             
                 dec_alpha_u = max(1e-8, alpha_u*(1 - episode/episodes))
                 U[s,a,s_prime] += dec_alpha_u*(r + tmdp.gamma*v_next - U[s,a,s_prime])
+
             else:
                 teleport_count += 1
             
@@ -78,11 +88,15 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
             break
             
         
-        if (rep_buffer.len() >= batch_size and t % sample_steps == 0)  or done_ or terminated:
+        if (rep_buffer.len() >= batch_size and traj_count % traj_steps == 0)  or done_ or terminated:
             r_sum = sum(rewards)
 
             # Processing the batch
-            states, actions, rewards, next_states, done = rep_buffer.sample_buffer(batch_size)
+            if last:
+                states, actions, rewards, next_states, done = rep_buffer.sample_last(batch_size)
+            else:
+                states, actions, rewards, next_states, done = rep_buffer.sample_buffer(batch_size)
+
             states = torch.tensor(states, dtype=torch.long).to(ref_policy.device)
             actions = torch.tensor(actions, dtype=torch.long).to(ref_policy.device).unsqueeze(dim=1)
             next_states = torch.tensor(next_states, dtype=torch.long).to(ref_policy.device)
@@ -135,79 +149,109 @@ def curriculum_SAC(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, q1_target
             q1_target.soft_update(q1_func, beta)
             q2_target.soft_update(q2_func, beta)
             
-            
-            pi_ref = ref_policy.get_probabilities()
-            pi_old = policy_pi.get_probabilities()
 
             dec_alpha = max(1e-8, alpha*(1 - episode/episodes))
 
-            # Bound evaluation
-            if( tmdp.tau > 0 and t % update_rate == 0):
-                Q = np.minimum(q1_func.get_values(), q2_func.get_values())
-
-                rel_pol_adv = compute_relative_policy_advantage_function(pi_ref, pi_old, Q)
-                rel_model_adv = compute_relative_model_advantage_function(tmdp.env.P_mat, tmdp.xi, U)
-                d = compute_d_from_tau(tmdp.env.mu, tmdp.env.P_mat, tmdp.xi, pi_old, tmdp.gamma, tmdp.tau)
-                delta = compute_delta(d, pi_old)
-                pol_adv = compute_expected_policy_advantage(rel_pol_adv, d)
+            
+            ################################ Bound evaluation ################################
+    
+            s_time = time.time()
+            # Get policies
+            pi_ref = ref_policy.get_probabilities()
+            pi = policy_pi.get_probabilities()
+            Q = np.minimum(q1_func.get_values(), q2_func.get_values())
+            # Tensor conversion
+            tensor_pi_ref = torch.tensor(pi_ref, dtype=torch.float32).to(device)
+            tensor_pi = torch.tensor(pi, dtype=torch.float32).to(device)
+            tensor_Q = torch.tensor(Q, dtype=torch.float32).to(device)
+            tensor_U = torch.tensor(U, dtype=torch.float32).to(device)
+            
+            # Compute advantages
+            rel_pol_adv = compute_relative_policy_advantage_function(tensor_pi_ref, tensor_pi, tensor_Q)
+            d = compute_d_from_tau(tensor_mu, tensor_P_mat, tensor_xi, tensor_pi, tmdp.gamma, tmdp.tau)
+            pol_adv = compute_expected_policy_advantage(rel_pol_adv, d) 
+            
+            if use_delta_Q:
+                delta_U = get_sup_difference(tensor_Q)
+            else:
+                delta_U = get_sup_difference(tensor_U) 
+            if delta_U == 0:
+                delta_U = (tmdp.env.reward_range[1]-tmdp.env.reward_range[0])/(1-tmdp.gamma)
+                
+            # Compute distance metrics
+            d_inf_pol = get_d_inf_policy(tensor_pi, tensor_pi_ref)
+            d_exp_pol = get_d_exp_policy(tensor_pi, tensor_pi_ref, d)
+            
+            if( tmdp.tau > 0): # Not yet converged to the original problem
+                delta = compute_delta(d, tensor_pi)
+                rel_model_adv = compute_relative_model_advantage_function(tensor_P_mat, tensor_xi, tensor_U)
                 model_adv = compute_expected_model_advantage(rel_model_adv, delta)
 
-                delta_U = get_sup_difference_U(U)
-                #delta_U = get_sup_difference_Q(Q) # Valid only if reward associated to teleport is null
-                if delta_U == 0:
-                    delta_U = (tmdp.env.reward_range[1]-tmdp.env.reward_range[0])/(1-tmdp.gamma)
-                
+                d_exp_model = get_d_exp_model(tensor_P_mat, tensor_xi, delta)
+            
+            else: # Converged to the original problem
+                model_adv = 0
+                d_exp_model = 0
+            # Compute optimal values
+            optimal_pairs = get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U,
+                                                            d_inf_pol, d_exp_pol, d_inf_model,
+                                                            d_exp_model, tmdp.tau, tmdp.gamma, biased=biased)
+            teleport_bounds = []
+            for alpha_prime, tau_prime in optimal_pairs:
+                bound = compute_teleport_bound(alpha_prime, tmdp.tau, tau_prime, pol_adv, model_adv,
+                                                tmdp.gamma, d_inf_pol, d_inf_model,
+                                                d_exp_pol, d_exp_model, delta_U, biased=biased)
+                teleport_bounds.append(bound)
+            
+            # Get the optimal values
+            alpha_star, tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds)
 
-                d_inf_pol = get_d_inf_policy(pi_ref, pi_old)
-                d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
-                d_exp_pol = get_d_exp_policy(pi_ref, pi_old, d)
-                d_exp_model = get_d_exp_model(tmdp.env.P_mat, tmdp.xi, delta)
+            print(optimal_pairs)
+            if alpha_star != 0 or tau_star != 0:
 
-                # Compute optimal values
-                optimal_pairs = get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U,
-                                                                d_inf_pol, d_exp_pol, d_inf_model,
-                                                                d_exp_model, tmdp.tau, tmdp.gamma, biased=biased)
-                teleport_bounds = []
-                for alpha_prime, tau_prime in optimal_pairs:
-                    bound = compute_teleport_bound(alpha_prime, tmdp.tau, tau_prime, pol_adv, model_adv,
-                                                    tmdp.gamma, d_inf_pol, d_inf_model,
-                                                    d_exp_pol, d_exp_model, delta_U, biased=biased)
-                    teleport_bounds.append(bound)
-                
-                alpha_star, tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds)
-
-                #print(optimal_pairs)
-                #print(teleport_bounds)
-
-                policy_pi.soft_update(ref_policy, 1)
-                tmdp.update_tau(tau_star)
                 print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(alpha_star, tau_star, episode, len(rewards),teleport_count))
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
-                if tau_star == 0:
-                    print("Converged to the original problem, episode {}".format(episode))
-                    convergence_t = episode
-                    #policy_pi.soft_update(ref_policy, 1)
-        
             else:
-                policy_pi.soft_update(ref_policy, 1.)
-                print("Episode: {} length: {}".format(episode, len(rewards)))
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
+                print("No updates performed, episode: {} length: {} #teleports:{}".format(episode, len(rewards),teleport_count))
+            if r_sum > 0:
+                print("Got not null reward {}!".format(r_sum))
+
+            if tau_star == 0 and tmdp.tau != 0:
+                print("Converged to the original problem, episode {}".format(episode))
+                convergence_t = episode
+                tmdp.update_tau(tau_star)
+            elif tmdp.tau > 0:
+                tmdp.update_tau(tau_star)
+                stucked_count = 0
+
+            if alpha_star != 0:
+                policy_pi.soft_update(ref_policy, alpha_star)
+                stucked_count = 0
+
+            e_time = time.time()
+            print("Time for bound evaluation: ", e_time - s_time)
             
             reward_records.append(r_sum)
-
             # Reset the batch
             rewards = []   
             teleport_count = 0
+            traj_count = 0
+            if pol_adv < 0 and tmdp.tau == 0:
+                print("No further improvement possible. Episode: {}".format(episode))
+                stucked_count += 1
+                episode = min(episodes-1, episode+10000)
+                t = min(episodes-1, t+10000)
+                if stucked_count > 10:
+                    break
 
     return {"convergence_t": convergence_t, "reward_records": reward_records}
 
 
-def curriculum_PPO_exp_replay(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, v_net:ValueNet, 
-                   q_func:QNet, loss_opt:torch.optim.Optimizer, q_opt:torch.optim.Optimizer,
-                   rep_buffer:ReplayBuffer, alpha=1., alpha_u=.2, beta=.2, epsilon=.2, episodes=5000,
-                   batch_size=1, sample_steps=1, update_rate=1, ppo_epochs=1, biased=False):
+def curriculum_AC_NN(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet, v_net:ValueNet, 
+                   q_func:QNet, pol_opt:torch.optim.Optimizer, v_opt:torch.optim.Optimizer,
+                   q_opt:torch.optim.Optimizer,
+                   rep_buffer:ReplayBuffer, alpha=1., alpha_u=.2, episodes=5000,
+                   batch_size=1, ppo_epochs=1, biased=False,
+                   use_delta_Q=False, convergence_check = False):
     
     nS, nA = tmdp.env.nS, tmdp.env.nA
     done_ = False 
@@ -227,7 +271,16 @@ def curriculum_PPO_exp_replay(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet
     rewards = []
     t = 0
     dec_alpha = alpha
-    ref_policy.soft_update(policy_pi, 1.) # Sincronize the policies
+    dec_alpha_u = alpha_u
+    traj_count = 0
+    stucked_count = 0
+
+    # Tensor conversion
+    tensor_mu = torch.tensor(tmdp.env.mu, dtype=torch.float32).to(device)
+    tensor_P_mat = torch.tensor(tmdp.env.P_mat, dtype=torch.float32).to(device)
+    tensor_xi = torch.tensor(tmdp.xi, dtype=torch.float32).to(device)
+
+    d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
 
     for episode in range(episodes): # Each episode is a single time step
         
@@ -244,16 +297,15 @@ def curriculum_PPO_exp_replay(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet
                 v_next = 0
                 if flags["done"]:
                     tmdp.reset()
+                    traj_count += 1
                 else:
                     with torch.no_grad():
-                        tensor_s_prime = torch.tensor([s_prime], dtype=torch.long).to(q1_func.device)
-                        probs = ref_policy.get_probs(tensor_s_prime)
-                        v_1 = q1_target(tensor_s_prime) @ probs
-                        v_2 = q2_target(tensor_s_prime) @ probs
-                        v_next = min(v_1, v_2)
+                        tensor_s_prime = torch.tensor([s_prime], dtype=torch.long).to(v_net.device)
+                        v_next = v_net(tensor_s_prime).item()
             
-                dec_alpha_u = max(1e-8, alpha_u*(1 - episode/episodes))
                 U[s,a,s_prime] += dec_alpha_u*(r + tmdp.gamma*v_next - U[s,a,s_prime])
+                dec_alpha_u = max(1e-8, alpha_u*(1 - episode/episodes))
+
             else:
                 teleport_count += 1
             
@@ -268,86 +320,153 @@ def curriculum_PPO_exp_replay(tmdp:TMDP, policy_pi:ActorNet, ref_policy:ActorNet
             break
             
         
-        if (rep_buffer.len() >= batch_size and t % sample_steps == 0)  or done_ or terminated:
+        if (rep_buffer.len() >= batch_size and traj_count % batch_size == 0)  or done_ or terminated:
             r_sum = sum(rewards)
 
             # Processing the batch
-            states, actions, rewards, next_states, done = rep_buffer.sample_buffer(batch_size)
+            states, actions, rewards, next_states, done = rep_buffer.sample_last()
+            
+            # Computing the discounted cumulative return along trajectories
+            cum_rewards = np.zeros_like(rewards)
+            for i in reversed(range(len(rewards))):
+                # Checking on done[i+1] allow to manage multiple trajectories in the same batch without affecting the overall cumulative return
+                cum_rewards[i] = rewards[i] + (tmdp.gamma*cum_rewards[i+1] if i+1 < len(rewards) and not(done[i+1]) else 0)
+
             states = torch.tensor(states, dtype=torch.long).to(ref_policy.device)
             actions = torch.tensor(actions, dtype=torch.long).to(ref_policy.device).unsqueeze(dim=1)
             next_states = torch.tensor(next_states, dtype=torch.long).to(ref_policy.device)
             rewards = torch.tensor(rewards, dtype=torch.float).to(ref_policy.device).unsqueeze(dim=1)
+            cum_rewards = torch.tensor(cum_rewards, dtype=torch.float).to(ref_policy.device).unsqueeze(dim=1)
             done = torch.tensor(done).to(ref_policy.device, dtype=torch.int).unsqueeze(dim=1)
             
             for _ in range(ppo_epochs):
-                # Compute the Advantage
+                # Value function Estimation
+                values = v_net(states).squeeze(dim=-1) # V values before the update
+                v_loss = F.mse_loss(values, cum_rewards)
+                v_opt.zero_grad()
+                v_loss.sum().backward()
+                v_opt.step()
+
+                # Q function Estimation
                 with torch.no_grad():
-                    tensor_next_values = v_net(next_states)
-                    tensor_advantages = rewards + tmdp.gamma*tensor_next_values*(1-done) - tensor_values
-            
+                    next_values = v_net(next_states).squeeze(dim=-1)
+                    q_target = rewards + tmdp.gamma*next_values*(1-done)
+
+                q_values = q_func(states).squeeze(dim=1).gather(1, actions) # Q values before the update
+                q_loss = F.mse_loss(q_values, q_target)
+                q_opt.zero_grad()
+                q_loss.sum().backward()
+                q_opt.step()
+
+                # Actor Loss
+                with torch.no_grad():
+                    q_values = q_func(states).squeeze(dim=1).gather(1, actions) # Q values after the update
+                    values = v_net(states) # V values after the update
+                    advantages = q_values - values
+
+                probs = ref_policy.get_probs(states)
+                log_probs = torch.log(probs + 1e-10) # small value for numerical stability
+                pol_loss = -(log_probs*advantages).mean()
+                
+                print("Value Loss: ", v_loss.item())
+                print("Q Loss: ", q_loss.item())
+                print("Policy Loss: ", pol_loss.item())
+                pol_opt.zero_grad()
+                pol_loss.backward()
+                pol_opt.step()
 
             dec_alpha = max(1e-8, alpha*(1 - episode/episodes))
 
-            # Bound evaluation
-            if( tmdp.tau > 0 and t % update_rate == 0):
-                Q = np.minimum(q1_func.get_values(), q2_func.get_values())
-
-                rel_pol_adv = compute_relative_policy_advantage_function(pi_ref, pi_old, Q)
-                rel_model_adv = compute_relative_model_advantage_function(tmdp.env.P_mat, tmdp.xi, U)
-                d = compute_d_from_tau(tmdp.env.mu, tmdp.env.P_mat, tmdp.xi, pi_old, tmdp.gamma, tmdp.tau)
-                delta = compute_delta(d, pi_old)
-                pol_adv = compute_expected_policy_advantage(rel_pol_adv, d)
+            ################################ Bound evaluation ################################
+            s_time = time.time()
+            # Get policies
+            pi_ref = ref_policy.get_probabilities()
+            pi = policy_pi.get_probabilities()
+            Q = q_func.get_values()
+            # Tensor conversion
+            tensor_pi_ref = torch.tensor(pi_ref, dtype=torch.float32).to(device)
+            tensor_pi = torch.tensor(pi, dtype=torch.float32).to(device)
+            tensor_Q = torch.tensor(Q, dtype=torch.float32).to(device)
+            tensor_U = torch.tensor(U, dtype=torch.float32).to(device)
+            
+            # Compute advantages
+            rel_pol_adv = compute_relative_policy_advantage_function(tensor_pi_ref, tensor_pi, tensor_Q)
+            d = compute_d_from_tau(tensor_mu, tensor_P_mat, tensor_xi, tensor_pi, tmdp.gamma, tmdp.tau)
+            pol_adv = compute_expected_policy_advantage(rel_pol_adv, d) 
+            
+            if use_delta_Q:
+                delta_U = get_sup_difference(tensor_Q)
+            else:
+                delta_U = get_sup_difference(tensor_U) 
+            if delta_U == 0:
+                delta_U = (tmdp.env.reward_range[1]-tmdp.env.reward_range[0])/(1-tmdp.gamma)
+                
+            # Compute distance metrics
+            d_inf_pol = get_d_inf_policy(tensor_pi, tensor_pi_ref)
+            d_exp_pol = get_d_exp_policy(tensor_pi, tensor_pi_ref, d)
+            
+            if( tmdp.tau > 0): # Not yet converged to the original problem
+                delta = compute_delta(d, tensor_pi)
+                rel_model_adv = compute_relative_model_advantage_function(tensor_P_mat, tensor_xi, tensor_U)
                 model_adv = compute_expected_model_advantage(rel_model_adv, delta)
 
-                delta_U = get_sup_difference_U(U)
-                #delta_U = get_sup_difference_Q(Q) # Valid only if reward associated to teleport is null
-                if delta_U == 0:
-                    delta_U = (tmdp.env.reward_range[1]-tmdp.env.reward_range[0])/(1-tmdp.gamma)
-                
+                d_exp_model = get_d_exp_model(tensor_P_mat, tensor_xi, delta)
+            
+            else: # Converged to the original problem
+                model_adv = 0
+                d_exp_model = 0
+            # Compute optimal values
+            optimal_pairs = get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U,
+                                                            d_inf_pol, d_exp_pol, d_inf_model,
+                                                            d_exp_model, tmdp.tau, tmdp.gamma, biased=biased)
+            teleport_bounds = []
+            for alpha_prime, tau_prime in optimal_pairs:
+                bound = compute_teleport_bound(alpha_prime, tmdp.tau, tau_prime, pol_adv, model_adv,
+                                                tmdp.gamma, d_inf_pol, d_inf_model,
+                                                d_exp_pol, d_exp_model, delta_U, biased=biased)
+                teleport_bounds.append(bound)
+            
+            # Get the optimal values
+            alpha_star, tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds)
 
-                d_inf_pol = get_d_inf_policy(pi_ref, pi_old)
-                d_inf_model = get_d_inf_model(tmdp.env.P_mat, tmdp.xi)
-                d_exp_pol = get_d_exp_policy(pi_ref, pi_old, d)
-                d_exp_model = get_d_exp_model(tmdp.env.P_mat, tmdp.xi, delta)
+            print(optimal_pairs)
+            if alpha_star != 0 or tau_star != 0:
 
-                # Compute optimal values
-                optimal_pairs = get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U,
-                                                                d_inf_pol, d_exp_pol, d_inf_model,
-                                                                d_exp_model, tmdp.tau, tmdp.gamma, biased=biased)
-                teleport_bounds = []
-                for alpha_prime, tau_prime in optimal_pairs:
-                    bound = compute_teleport_bound(alpha_prime, tmdp.tau, tau_prime, pol_adv, model_adv,
-                                                    tmdp.gamma, d_inf_pol, d_inf_model,
-                                                    d_exp_pol, d_exp_model, delta_U, biased=biased)
-                    teleport_bounds.append(bound)
-                
-                alpha_star, tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds)
-
-                #print(optimal_pairs)
-                #print(teleport_bounds)
-
-                policy_pi.soft_update(ref_policy, alpha_star)
-                ref_policy.soft_update(policy_pi, 1)
-                tmdp.update_tau(tau_star)
                 print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(alpha_star, tau_star, episode, len(rewards),teleport_count))
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
-                if tau_star == 0:
-                    print("Converged to the original problem, episode {}".format(episode))
-                    convergence_t = episode
-                    policy_pi.soft_update(ref_policy, 1)
-        
             else:
-                policy_pi.soft_update(ref_policy, 1.)
-                print("Episode: {} length: {}".format(episode, len(rewards)))
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
+                print("No updates performed, episode: {} length: {} #teleports:{}".format(episode, len(rewards),teleport_count))
+            if r_sum > 0:
+                print("Got not null reward {}!".format(r_sum))
+
+            if tau_star == 0 and tmdp.tau != 0:
+                print("Converged to the original problem, episode {}".format(episode))
+                convergence_t = episode
+                tmdp.update_tau(tau_star)
+            elif tmdp.tau > 0:
+                tmdp.update_tau(tau_star)
+                stucked_count = 0
+
+            if alpha_star != 0:
+                policy_pi.soft_update(ref_policy, alpha_star)
+                stucked_count = 0
+
+            e_time = time.time()
+            print("Time for bound evaluation: ", e_time - s_time)
             
             reward_records.append(r_sum)
-
             # Reset the batch
             rewards = []   
             teleport_count = 0
+            traj_count = 0
+            rep_buffer.clear()
+
+            if pol_adv < 0 and tmdp.tau == 0 and convergence_check:
+                print("No further improvement possible. Episode: {}".format(episode))
+                stucked_count += 1
+                episode = min(episodes-1, episode+10000)
+                t = min(episodes-1, t+10000)
+                if stucked_count > 10:
+                    break
 
     return {"convergence_t": convergence_t, "reward_records": reward_records}
 
