@@ -561,7 +561,7 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
     
     optimal_values = []
     
-    if (pol_adv > 0):
+    if pol_adv > 0:
         # policy evaluation temrs
         if d_inf_pol != 0 and d_exp_pol != 0:
             # optimal value for alpha with tau'=tau
@@ -580,16 +580,17 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
             # optimal value for tau' with alpha=0
             tau_prime_0 = compute_tau_prime_0(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, biased=biased)
             if tau_prime_0 >= 0 and tau_prime_0 <= 1:
-                optimal_values.append((0., min(round(tau, 5), round(tau_prime_0, 5))))
+                optimal_values.append((0., round(tau_prime_0, 5)))
             
             # optimal value for tau' with alpha=1
             tau_prime_1 = compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, d_inf_pol, d_exp_pol, biased=biased)     
             if tau_prime_1 >= 0 and tau_prime_1 <= 1:
-                optimal_values.append((1., min(round(tau, 5), round(tau_prime_1, 5))))
+                optimal_values.append((1., round(tau_prime_1, 5)))
 
     if len(optimal_values) == 0:
         print("No valid pairs found")
-        optimal_values.append((0., round(tau, 5))) # No valid pairs found
+        tau_prime = tau if tau > 0.1 else tau*0.5
+        optimal_values.append((0., round(tau_prime, 5))) # No valid pairs found
     
     return optimal_values
 

@@ -10,9 +10,7 @@ from torch.nn import functional as F
 import time
 from ReplayBuffer import ReplayBuffer
 
-seed = None
-#seed = 73111819126096741712253486776689977811
-
+seed = 47146882006333120128184314011326542902
 np_random, seed = seeding.np_random(seed)
 def get_current_seed():
     return seed
@@ -427,7 +425,7 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
 
     rewards = []
     reward_records = []
-
+    
     t = 0 # episode in batch counter
     k = 0 # episode in trajectory counter
     ep = 0 # overall episode counter
@@ -480,11 +478,12 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
             flags["terminated"] = terminated
             
             if not flags["teleport"]:
+                k += 1
+                t += 1
                 sample = (s, a, r, s_prime, a_prime, flags, t, k)
                 traj.append(sample)
                 rewards.append(r)
-                k += 1
-                t += 1
+                
                 if flags["done"]:
                     tmdp.reset()
                     # add the current trajectory
@@ -511,10 +510,11 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                 print("Ending the loop")
                 terminated = True
                 flags["terminated"] = terminated
-                batch.append(traj)
-                history.append(traj)
-                traj = []
-                k = 0
+                if len(traj) > 0:
+                    batch.append(traj)
+                    history.append(traj)
+                    traj = []
+                    k = 0
                 break # temporary ending condition To be Removed
                 if flags["done"]:
                     done = True
@@ -556,6 +556,10 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
                         grad_log_policy = grad_log_policy/(temperature*temp_decay)
                         theta_ref[s] += alpha_pol*decay*grad_log_policy*(Q[s,a] - V[s]) # Policy parameters update
                         ep += 1 # Increase the episode counter
+
+                        """print("Q[{}][{}] = {}, V[{}] = {}, U[{}][{}][{}] = {}".format(s,a,Q[s,a],s,V[s],s,a,s_prime,U[s,a,s_prime]))
+                        print("Policy[{}] = {}, Advantage[{},{}] = {}".format(s,pi_ref[s],s, a,Q[s,a] - V[s]))
+                        print("Policy gradient[{}]= {}".format(s, grad_log_policy))"""
             
             r_sum = sum(rewards)
 
@@ -664,6 +668,141 @@ def curriculum_AC(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, status_s
     return {"Qs": Qs, "history": history, "thetas": thetas, "reward_records": reward_records}
 
 
+def curriculum_Q_learning(tmdp:TMDP, Q, curriculum:list=[], episodes:int=5000, alpha:float=.25, eps:float=.4, status_step:int=50000, 
+                  batch_nS:int=1, lam:float=0.):
+    nS, nA = Q.shape
+
+    if len(curriculum) == 0:
+        curriculum = [1.0 - i*0.05 for i in range(21)]
+    curr_index = min(1, len(curriculum)-1)
+    tmdp.update_tau(curriculum[curr_index])
+    
+    # History as list of dictionaries {state, action, reward, next_state, flags, t} over all transactions
+    history = []
+    # Subset of the history, considering only the current batch
+    batch = []
+    # Subset of the batch, considering only the current trajectory
+    traj = []
+
+    rewards = []
+    reward_records = []
+    exp_performance = []
+
+    t = 0 # episode in batch counter
+    k = 0 # episode in trajectory counter
+
+    done = False 
+    terminated = False
+
+    # Mid-term results
+    Qs = []
+
+    decay = 1
+    eps_decay = 1
+    episode = 0
+    teleport_count = 0
+
+    while episode < episodes: # Each episode is a single time step
+
+        while True:
+            s = tmdp.env.s
+            # Pick an action according to the parametric policy
+            a = eps_greedy(tmdp.env.s, Q, eps*eps_decay, tmdp.env.allowed_actions[int(tmdp.env.s)])
+            # Perform a step in the environment, picking action a
+            s_prime, r, flags, p =  tmdp.step(a)
+            
+            flags["terminated"] = terminated
+            
+            if not flags["teleport"]:
+                k += 1
+                t += 1
+                sample = (s, a, r, s_prime, flags, t, k)
+                traj.append(sample)
+                rewards.append(r)
+                
+                if flags["done"]:
+                    tmdp.reset()
+                    # add the current trajectory
+                    batch.append(traj)
+                    history.append(traj)
+                    # Reset the trajectory
+                    traj = []
+                    k = 0
+            else:
+                teleport_count += 1
+                if len(traj) > 0:
+                    batch.append(traj)
+                    history.append(traj)
+                    traj = []
+                    k = 0
+            episode += 1
+
+            if episode < episodes-1: # move to next time step
+                break   
+            else: # if reached the max num of time steps, wait for the end of the trajectory for consistency
+                print("Ending the loop")
+                terminated = True
+                flags["terminated"] = terminated
+                if len(traj) > 0:
+                    batch.append(traj)
+                    history.append(traj)
+                    traj = []
+                    k = 0
+                break # temporary ending condition To be Removed
+                if flags["done"]:
+                    done = True
+                    break
+
+        # Processing the batch
+        if( (len(batch) != 0 and len(batch) % batch_nS == 0) or done or terminated):
+            # Extract previous policy for future comparison
+            
+            # Iterate over trajectories in the batch
+            for trajectory in batch:
+                # Iterate over samples in the trajectory
+                e = np.zeros((nS, nA))
+                for j, sample in enumerate(trajectory):
+                    s, a, r, s_prime, flags, t, k  = sample
+                    
+                    a_prime = greedy(s_prime, Q, tmdp.env.allowed_actions[int(s_prime)]) 
+
+                    td_error = alpha*decay*(r + tmdp.gamma*Q[s_prime, a_prime] - Q[s,a])
+
+                    # Eligibility traces
+                    e[s,a] = 1 # Freequency heuristic with saturation
+                    if lam == 0:
+                        Q[s,a] += e[s,a]*td_error
+                    else:
+                        Q = Q + e*td_error
+                    e = tmdp.gamma*lam*e # Recency heuristic decay
+            
+            r_sum = sum(rewards)
+
+            decay = max(1e-8, 1-(episode)/(episodes))
+            eps_decay = max(0, (1-episode/episodes)**2)
+            # Reset the batch
+            batch = []
+            reward_records.append(r_sum)
+            V = compute_V_from_Q(Q, get_policy(Q))
+            exp_performance.append(compute_expected_j(V, tmdp.env.mu))
+            rewards = []
+            t = 0
+            teleport_count = 0
+
+        # Curriculum update
+        if episode > episodes/len(curriculum)*(curr_index) and tmdp.tau != 0:
+            curr_index = min(curr_index+1, len(curriculum)-1)
+            tmdp.update_tau(curriculum[curr_index])
+            print("Curriculum update, episode:", episode, "tau:", curriculum[curr_index])
+
+        if episode % status_step == 0 or done or terminated:
+            #print("Mid-result status update, episode:", episode, "done:", done)
+            # Mid-result status update
+            Qs.append(np.copy(Q))
+
+    return {"Qs": Qs, "history": history, "reward_records": reward_records, "exp_performance": exp_performance}
+
+
 def curriculum_AC_buffer(tmdp:TMDP, Q, rep_buffer:ReplayBuffer, episodes=5000,  alpha=.25, alpha_pol=.1, status_step=50000, 
                   batch_nS=1, temperature=1.0, lam=0., biased=True, epochs=1, use_delta_Q=False,
                   device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), final_temperature=1e-3):
@@ -671,7 +810,7 @@ def curriculum_AC_buffer(tmdp:TMDP, Q, rep_buffer:ReplayBuffer, episodes=5000,  
 
     rewards = []
     reward_records = []
-
+    
     t = 0 # episode in batch counter
     k = 0 # episode in trajectory counter
     ep = 0 # overall episode counter

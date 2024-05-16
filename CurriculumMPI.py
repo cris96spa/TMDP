@@ -11,164 +11,300 @@ import time
 from TMDP import TMDP
 from model_functions import *
 from algorithms import *
+import matplotlib.pyplot as plt
+import mlflow 
+import os
 
 class CurriculumMPI():
 
-    def __init__(self, tmdp:TMDP, Q=None, theta=None, theta_ref=None, U=None, model_lr=.25, 
-                 pol_lr=.12, episodes=5000, status_step=50000, batch_size=1, lam=0., epochs=1,
-                 temp=1, final_temp=1e-3, device=None, biased=False, use_delta_Q=False):
+    def __init__(self, tmdp:TMDP, Q=None, theta=None, theta_ref=None, device=None, 
+                 checkpoint=False, checkpoint_dir=None, checkpoint_name=None,
+                 checkpoint_step:int=50000):
         
-        ######################################### Learning Quantities #########################################
-        self.tmdp = tmdp
+        ######################################### Learning Quantities ###########################################
+        self.tmdp = tmdp                                                                                        #                             
+                                                                                                                #                         
+        if Q is None:                                                                                           #                          
+            Q = np.zeros((tmdp.nS, tmdp.nA))                                                                    #           
+        self.Q = Q                                                                                              #
+                                                                                                                #
+        self.V = np.zeros(tmdp.nS)                                                                              #           
+        self.U = np.zeros((tmdp.nS, tmdp.nA, tmdp.nS))                                                          #
+                                                                                                                #
+        if theta is None:                                                                                       #                                      
+            theta = np.zeros((tmdp.nS, tmdp.nA))                                                                #                              
+        self.theta = theta                                                                                      #
+                                                                                                                # 
+        if theta_ref is None:                                                                                   #  
+            theta_ref = np.zeros((tmdp.nS, tmdp.nA))                                                            #    
+        self.theta_ref = theta_ref                                                                              #                                        
+                                                                                                                #
+        if device is None:                                                                                      #                                      
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #   
+        self.device = device                                                                                    #
+                                                                                                                #
+        ######################################### Training Parameters ###########################################
+        self.k = 0                                  # number of episodes in the current trajectory              #
+        self.t = 0                                  # number of episodes in the current batch                   #
+        self.done = False                           # flag to indicate end the training                         #
+        self.terminated = False                     # flag to indicate the forced termination of the training   #
+        self.rewards = []                           # rewards for current trajectory                            #
+        self.temp_decay = 0                         # temperature decay factor                                  #               
+        self.lr_decay = 1                           # learning rate decay factor                                #
+        self.episode = 0                            # episode counter                                           #
+                                                                                                                #
+        ######################################### Teleport Bound Parameters #####################################
+        self.alpha_star = 1                         # PI learning rate                                          #        
+        self.tau_star = 1                           # MI new value of tau                                       #
+        self.teleport_count = 0                     # number of teleports during the batch                      #
+                                                                                                                #
+        ##########################################Lists and Trajectories ########################################
+        self.batch = []                             # batch of trajectories                                     #
+        self.traj = []                              # current trajectory                                        #
+        self.reward_records = []                    # avg_rewards over each processed batch                     #      
+        self.exp_performances = []                  # expected performances over each processed batch           #
+        self.Qs = []                                # Q values during training                                  #
+        self.Vs = []                                # V values during training                                  #
+        self.temps = []                             # learning rates during training                            #
+        self.thetas = []                            # policy parameters during training                         #    
+        self.theta_refs = []                        # reference policy parameters during training               #
+                                                                                                                #
+        ######################################### Checkpoint Parameters #########################################
+        if checkpoint_dir is None:                                                                              #                                         
+            checkpoint_dir = "./checkpoints"                                                                    #
+        if checkpoint_name is None:                                                                             #                                            
+            checkpoint_name =  tmdp.env.__class__.__name__+ "{}_{}".format(tmdp.nS, tmdp.nA)                    #
+                                                                                                                #
+        self.checkpoint = checkpoint                # flag to save checkpoints                                  #    
+        self.checkpoint_dir = checkpoint_dir        # directory to save checkpoints                             #    
+        self.checkpoint_name = checkpoint_name      # name of the checkpoint file                               #    
+        self.checkpoint_step = checkpoint_step      # number of episodes to save a checkpoint                   #
+        #########################################################################################################
 
-        if Q is None:
-            Q = np.zeros((tmdp.nS, tmdp.nA))
-        self.Q = Q
+    def train(self, model_lr:float=.25,pol_lr:float=.12,
+              batch_size:int=1, temp:float=1., lam:float=0.,
+              final_temp:float=0.02, episodes:int=5000,
+              check_convergence:bool=False, epochs:int=1,
+              biased:bool=False, use_delta_Q:bool=False, 
+              param_decay:bool=True, log_mlflow:bool=False,
+              check_learning:bool=True):
+        """
+            Curriculum MPI training and sample loop
+        """
+        self.tmdp.reset()                           # reset the environment
 
-        if U is None:
-            U = np.zeros((tmdp.nS, tmdp.nA))
-        self.U = U
-
-        if theta is None:
-            theta = np.zeros((tmdp.nS, tmdp.nA))
-        self.theta = theta
-
-        if theta_ref is None:
-            theta_ref = np.zeros((tmdp.nS, tmdp.nA))
-        self.theta_ref = theta_ref
-
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = device
-
-        self.model_lr = model_lr
-        self.pol_lr = pol_lr
-        self.temp = temp                            # temperature for softmax policy
-        self.final_temp = final_temp                # final temperature for softmax policy
-        self.temp_decay = 1                         # temperature decay factor       
-        self.lr_decay = 1                           # learning rate decay factor                
-
-        ######################################### Training Parameters #########################################
-        self.episodes = episodes                    # number of episodes to run
-        self.status_step = status_step              # Status information update step
-        self.batch_size = batch_size                # Number of trajectories to collect before update
-        self.epochs = epochs                        # Number of epochs to train each batch
-        self.lam = lam                              # lambda for eligibility traces
-        self.done = False                           # flag to indicate end the training
-        self.terminated = False                     # flag to indicate the forced termination of the training
-
-        ####################################### Teleport Bound Parameters #######################################
-        self.alpha_star = 1                         # PI learning rate
-        self.tau_star =1                            # MI new value of tau
+        
+        ################################################## Parameter Initialization ##################################################
         self.use_delta_Q = use_delta_Q              # flag to use delta Q instead of delta U for performance improvement bound
         self.biased = biased                        # flag to use biased or unbiased performance improvement bount
-
+        self.episodes = episodes                    # number of episodes to train
         ####################################### Additional Counters #######################################
-        self.stucked_count = 0                      # number of batches updates without improvement
-        self.k = 0                                  # number of episodes in the current trajectory
-        self.t = 0                                  # number of episodes in the current batch
-        self.teleport_count = 0                     # number of teleports during the batch
+        stucked_count = 0                           # number of batches updates without improvement
+        
+        # Tensorize the environment for PyTorch
+        # Tensor conversion
+        self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
+        self.tensor_P_mat = torch.tensor(self.tmdp.env.P_mat, dtype=torch.float32).to(self.device)
+        self.tensor_xi = torch.tensor(self.tmdp.xi, dtype=torch.float32).to(self.device)
 
-        ####################################### Lists and Trajectories #######################################
-        self.batch = []                             # batch of trajectories
-        self.traj = []                              # current trajectory          
-        self.rewards = []                           # rewards for current trajectory
-        self.reward_records = []                    # avg_rewards over each processed batch
-        self.exp_performances = []                  # expected performances over each processed batch
-        self.Qs = []                                # Q values during training
-        self.Vs = []                                # V values during training
-        self.lrs = []                               # learning rates during training
-        self.thetas = []                            # policy parameters during training
+        # Pre-Compute the D_inf distance metric
+        self.d_inf_model = get_d_inf_model(self.tmdp.env.P_mat, self.tmdp.xi)
+
+        ################################################## Training and Sampling Loop ##################################################
+        while self.episode < self.episodes:                                                      # loop over episodes
+            
+            policy = get_softmax_policy(self.theta, temperature=temp+self.temp_decay)       # get softmax policy
+            
+            ############################################## Sampling ############################################################
+            flags = self.sample_step(policy)                                                # sample a step from the environment
+            
+            self.episode += 1                                                               # increment the episode counter
+
+            if self.episode==self.episodes-1:                                                    # if last episode   
+                
+                if self.alpha_star > 0 and stucked_count == 0 and check_learning:
+                    self.episodes += min(100000, int(self.episodes * 0.10))                           # increase the number of episodes if still learning
+                    print("Increasing the number of episodes to {} ".format(self.episodes))
+                else:
+                    self.done = flags["done"]                                               # check if the episode is done
+                    self.terminated = not self.done
+                    print("Sampling loop is over. Done flag: {}, Terminated flag: {}".format(self.done, self.terminated))
+                    if len(self.traj) > 0:
+                        self.batch.append(self.traj)
+                        self.traj = []
+                        self.k = 0
+                
+
+            # Batch processing
+            if( (len(self.batch) != 0 and len(self.batch) % batch_size == 0) or self.done or self.terminated):
+                
+                ############################################## Training ############################################################
+                alpha_model = model_lr*self.lr_decay                                          # model learning rate    
+                alpha_pol = pol_lr*self.lr_decay                                              # policy learning rate                   
+                dec_temp = temp+self.temp_decay                                               # temperature decay                                
+                self.update(alpha_model, alpha_pol, dec_temp, lam, epochs)                    # Update Value Functions and Reference Policy                                                                        # train the model updating value functions and reference policy
+                r_sum = sum(self.rewards)                                                     # sum of rewards in the batch
+                
+                if r_sum > 0:
+                    print("Got not null reward {}!".format(r_sum))
+
+                #################################### Compute Expected Performance ####################################
+                tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
+                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))    # expected performance of the policy
+                print("Expected performance under current policy: ", self.exp_performances[-1])
+
+
+
+                ############################################# Bound evaluation #############################################
+                s_time = time.time()                                                                            # start time    
+                optimal_pairs, teleport_bounds = self.bound_eval(dec_temp)                                      # get candidate pairs and the associated teleport bound value
+
+                # Get the optimal values
+                self.alpha_star, self.tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds) # get the optimal values
+
+
+                ########################################## Model and Policy Update ##########################################
+                print(optimal_pairs)
+                if self.alpha_star != 0 or self.tau_star != 0:                                                  # not null optimal values
+                    print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, self.episode, len(self.rewards),self.teleport_count))
+                else:
+                    print("No updates performed, episode: {} length: {} #teleports:{}".format(self.episode, len(self.rewards),self.teleport_count))
+
+                if self.tau_star >= 0 and self.tau_star < self.tmdp.tau:    
+                    if self.tau_star == 0:                                                   
+                        print("Converged to the original problem, episode {}".format(self.episode))
+                        self.convergence_t = self.episode                                                                # store the convergence episode                                                                                                                                 # if tau is not zero and not converged
+                    self.tmdp.update_tau(self.tau_star)                                                         # Regular update without convergence
+                    self.stucked_count = 0
+
+                if self.alpha_star != 0:
+                    self.theta = self.alpha_star*self.theta_ref + (1-self.alpha_star)*self.theta
+                    self.stucked_count = 0
+                
+                e_time = time.time()                                                                            # end time
+                print("Time for bound evaluation: ", e_time - s_time)
+                
+                
+                ############################################# Decay Factors #############################################
+                self.lr_decay = max(1e-8, 1-(self.episode)/(self.episodes)) if param_decay else 1                # learning rate decay
+                self.temp_decay = (final_temp - temp)*(self.episode/self.episodes) if param_decay else 0         # temperature decay
+                   
+                ############################################# Preparing next batch #############################################
+                self.batch = []                                         # reset the batch
+                self.reward_records.append(r_sum)                       # append the sum of rewards to the records
+                self.rewards = []                                       # reset the rewards list
+                self.teleport_count = 0                                 # reset the teleport counter
+                self.t = 0                                              # reset the episode counter in the batch    
+
+                ############################################# Convergence Check #############################################
+                if check_convergence:
+                    if self.alpha_star == 0 and self.tmdp.tau == 0:
+                        stucked_count += 1
+                        self.episode = min(self.episode+10000, self.episodes-1)
+                        if stucked_count > 50:
+                            self.terminated = True
+                            break
+                            
+            ############################################# Checkpointing #############################################                     
+            if self.episode % self.checkpoint_step == 0 or self.done or self.terminated:
+                self.Qs.append(np.copy(self.Q))
+                self.Vs.append(np.copy(self.V))
+                self.temps.append(temp+self.temp_decay)
+                self.theta_refs.append(np.copy(self.theta_ref))
+                self.thetas.append(np.copy(self.theta))
+                
+                if log_mlflow:
+                    pass
+
+                if self.checkpoint:
+                    #self.save_checkpoint(episode)
+                    pass
+                if self.done or self.terminated:
+                    break
 
     def sample_step(self, policy):
         """
             Sample a step from the environment
         """
-        s = self.tmdp.env.s                         # current state from the environment
-        a = select_action(policy[s])                # select action from the policy
-        s_prime, r, flags, p = self.tmdp.step(a)    # take a step in the environment
-        a_prime = select_action(policy[s_prime])    # select action of next state from the policy             
+        s = self.tmdp.env.s                                             # current state from the environment
+        a = select_action(policy[s])                                    # select action from the policy
+        s_prime, r, flags, p = self.tmdp.step(a)                        # take a step in the environment
+        a_prime = select_action(policy[s_prime])                        # select action of next state from the policy             
         flags["terminated"] = self.terminated
-        sample = (s, a, r, s_prime, a_prime, flags, self.t, self.k) # sample tuple
+        
 
-        if not flags["teleport"]:                   # Following regular probability transitions function
+        if not flags["teleport"]:                                       # Following regular probability transitions function
+            self.k += 1                                                 # increment the episode in the trajectory counter
+            self.t += 1                                                 # increment the episode in batch counter
+            sample = (s, a, r, s_prime, a_prime, flags, self.t, self.k) # sample tuple
+            self.traj.append(sample)                                    # append sample to the trajectory           
+            self.rewards.append(r)                                      # append reward to the rewards list   
             
-            self.traj.append(sample)                # append sample to the trajectory           
-            self.rewards.append(r)                  # append reward to the rewards list   
-            self.k += 1                             # increment the episode in the trajectory counter
-            self.t += 1                             # increment the episode in batch counter
             
-            if flags["done"]:                       # if termina state is reached                              
-                self.tmdp.reset()                   # reset the environment
-                self.batch.append(self.traj)        # append the trajectory to the batch
-
+            if flags["done"]:                                           # if termina state is reached                              
+                self.tmdp.reset()                                       # reset the environment
+                self.batch.append(self.traj)                            # append the trajectory to the batch
                 # reset current trajectory information
                 self.traj = []
                 self.k = 0
-        else:                                       # Following teleportation distribution
-            self.teleport_count += 1                # increment the teleport counter
-            
-            if len(self.traj) > 0:                  # current trajectory not empty
-                self.batch.append(self.traj)        # append the trajectory to the batch
+        else:                                                           # Following teleportation distribution
+            self.teleport_count += 1                                    # increment the teleport counter
+            if len(self.traj) > 0:                                      # current trajectory not empty
+                self.batch.append(self.traj)                            # append the trajectory to the batch
                 
                 # reset current trajectory information
                 self.traj = []
                 self.k = 0
-        return sample
 
-    def train(self):
+        return flags
+
+
+    def update(self, alpha_model, alpha_pol, dec_temp, lam, epochs=1):
         """
-            Train the model using the collected batch of trajectories
+            Update the model using the collected batch of trajectories
         """
-        for _ in range(self.epochs):                                            # loop over epochs
-            for traj in self.batch:                                             # loop over trajectories
-                
-                e = np.zeros((self.tmdp.nS, self.tmdp.nA))                      # Reset eligibility traces at the beginning of each trajectory
-                
-                for sample in traj:                                             # loop over samples in the trajectory
+        for _ in range(epochs):                                         # loop over epochs
+            for traj in self.batch:                                     # loop over trajectories
+                e = np.zeros((self.tmdp.nS, self.tmdp.nA))              # Reset eligibility traces at the beginning of each trajectory
+                for sample in traj:                                     # loop over samples in the trajectory
                     
-                    s, a, r, s_prime, a_prime, flags, t, k = sample             # unpack sample tuple    
+                    s, a, r, s_prime, a_prime, flags, t, k = sample     # unpack sample tuple    
                 
                     ##################################### Train Value Functions #####################################
-                    td_error = self.model_lr*self.lr_decay*(r +                 # temporal difference error
-                                                            self.tmdp.gamma*self.Q[s_prime, a_prime] - self.Q[s, a])
-                    
-                    e[s,a] = 1                                                  # frequency heuristic with saturation                      
-                    if self.lam == 0:
-                        self.Q[s,a] += td_error*e[s,a]                          # update Q values of the visited state-action pair
-                    else:
-                        self.Q += e*td_error                                    # update all Q values with eligibility traces
-                    
-                    e *= self.tmdp.gamma*self.lam                               # recency heuristic 
 
-                    ref_policy = get_softmax_policy(self.theta_ref,             # get softmax policy from reference policy
-                                                temperature=self.temp*self.temp_decay) 
-                
-                    V = compute_V_from_Q(self.Q, ref_policy)                    # compute value function from Q values
-                    A = self.Q[s,a] - V[s]                                      # compute advantage function
+                    td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime] - self.Q[s, a])
                     
-                    self.U[s,a,s_prime] += self.model_lr*self.lr_decay*(r +     # update the model
-                                                                    self.tmdp.gamma*V[s_prime] - self.U[s,a,s_prime]) 
+                    e[s,a] = 1                                          # frequency heuristic with saturation                      
+                    if lam == 0:
+                        self.Q[s,a] += td_error*e[s,a]                  # update Q values of the visited state-action pair
+                    else:
+                        self.Q += e*td_error                            # update all Q values with eligibility traces
+                    
+                    e = self.tmdp.gamma*lam*e                           # recency heuristic 
+
+
+                    ref_policy = get_softmax_policy(self.theta_ref,     # get softmax policy from reference policy
+                                                temperature=dec_temp) 
+                
+                    self.V = compute_V_from_Q(self.Q, ref_policy)       # compute value function from Q values
+                    A = self.Q[s,a] - self.V[s]                         # compute advantage function
+                    
+                    self.U[s,a,s_prime] += alpha_model*(r + self.tmdp.gamma*self.V[s_prime] - self.U[s,a,s_prime]) 
 
                     
                     ######################################### Train Policy #########################################
                     # Computing Policy Gradient
                     g_log_pol = - ref_policy[s]
                     g_log_pol[a] += 1
-                    g_log_pol = g_log_pol/(self.temp*self.temp_decay)
-                    
-                    self.theta_ref[s] += self.pol_lr*self.lr_decay*g_log_pol*A  # policy parameters update
+                    g_log_pol = g_log_pol/(dec_temp)
+                    self.theta_ref[s] += alpha_pol*g_log_pol*A          # reference policy parameters update
 
-                    #################################### Compute Expected Performance ####################################
-                    tensor_V = torch.tensor(V, dtype=torch.float32).to(self.device)
-                    self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))   # expected performance of the policy
-
-    def bound_eval(self):
+    def bound_eval(self, dec_temp):
         """
             Evaluate the teleport bound for performance improvement
         """
-        ref_policy = get_softmax_policy(self.theta_ref, temperature=self.temp*self.temp_decay)  # get softmax policy from reference policy
-        policy = get_softmax_policy(self.theta, temperature=self.temp*self.temp_decay)          # get softmax policy from current policy
+        ref_policy = get_softmax_policy(self.theta_ref, temperature=dec_temp)  # get softmax policy from reference policy
+        policy = get_softmax_policy(self.theta, temperature=dec_temp)          # get softmax policy from current policy
 
         # Tensor conversion
         tensor_ref_pol = torch.tensor(ref_policy, dtype=torch.float32).to(self.device)
@@ -231,79 +367,126 @@ class CurriculumMPI():
         
         return pairs, teleport_bounds
 
-    def main_loop(self):
+    def state_dict(self):
         """
-            Curriculum MPI training and sample loop
+            Return the state dictionary
         """
-        ################################################## Parameter Initialization ##################################################
-        episode = 0
+        return {
+            "Q": self.Q,
+            "V": self.V,
+            "U": self.U,
+            "theta": self.theta,
+            "theta_ref": self.theta_ref,
+            "exp_performances": self.exp_performances,
+            "reward_records": self.reward_records,
+            "Qs": self.Qs,
+            "Vs": self.Vs,
+            "temps": self.temps,
+            "thetas": self.thetas,
+            "theta_refs": self.theta_refs,
+            "episode": self.episode,
+            "lr_decay": self.lr_decay,
+            "temp_decay": self.temp_decay,
 
-        # Tensorize the environment for PyTorch
-        self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)         
-        self.tensor_P_mat = torch.tensor(self.tmdp.env.P_mat, dtype=torch.float32).to(self.device)
-        self.tensor_xi = torch.tensor(self.tmdp.xi, dtype=torch.float32).to(self.device)
+        }
+
+    def save_checkpoint(self):
+        """
+            Save the checkpoint
+        """
+        checkpoint = self.state_dict()
+        torch.save(checkpoint, "{}/{}/{}.pth".format(self.checkpoint_dir, self.checkpoint_name, self.episode))
+        print("Saved checkpoint at episode {}".format(self.episode))
+
+    def load_checkpoint(self, episode):
+        """
+            Load the checkpoint
+        """
+        checkpoint = torch.load("{}/{}/{}.pth".format(self.checkpoint_dir, self.checkpoint_name, episode))
+        self.Q = checkpoint["Q"]
+        self.V = checkpoint["V"]
+        self.U = checkpoint["U"]
+        self.theta = checkpoint["theta"]
+        self.theta_ref = checkpoint["theta_ref"]
+        self.exp_performances = checkpoint["exp_performances"]
+        self.reward_records = checkpoint["reward_records"]
+        self.Qs = checkpoint["Qs"]
+        self.Vs = checkpoint["Vs"]
+        self.temps = checkpoint["temps"]
+        self.thetas = checkpoint["thetas"]
+        self.theta_refs = checkpoint["theta_refs"]
+        self.episode = checkpoint["episode"]
+        self.lr_decay = checkpoint["lr_decay"]
+        self.temp_decay = checkpoint["temp_decay"]
+        print("Loaded checkpoint at episode {}".format(episode))
+
+    
+    def save_model(self, path):
+        """
+            Save the model
+        """
+        torch.save(self.state_dict(), path)
+        print("Saved model at {}".format(path))
+
+    def save_to_mlflow(self):
+        """
+        Logs the model as an MLflow artifact.
+        """
+        # Define a temporary path to save the model
+        temp_path = "./temp_model.pth"
         
-        # Compute the D_inf distance metric
-        self.d_inf_model = get_d_inf_model(self.tmdp.env.P_mat, self.tmdp.xi)
+        # Save the model using the existing save_model function
+        self.save_model(temp_path)
+        
+        # Log the model file as an MLflow artifact
+        mlflow.log_artifact(temp_path, "model")
 
-        ################################################## Training and Sampling Loop ##################################################
-        while episode < self.episodes:                                                              # loop over episodes
-            
-            policy = get_softmax_policy(self.theta, temperature=self.temp*self.temp_decay)        # get softmax policy
-            
-            ############################################## Sampling ############################################################
-            sample = self.sample_step(policy)                                                       # sample a step from the environment
-            episode += 1                                                                            # increment the episode counter
+        # Clean up: remove the temporary file after logging
+        os.remove(temp_path)
+        print("Model logged to MLflow and local file removed.")
 
-            if episode==self.episodes-1:                                                            # if last episode   
-                
-                if self.alpha_star > 0 and self.tmdp.tau < 1e-4 and self.stucked_count == 0:
-                    self.episodes += max(100000, self.episodes * 0.10)                              # increase the number of episodes
-                    print("Increasing the number of episodes to {} ".format(self.episodes))
-                else:
-                    self.done = sample[5]["done"]                                                   # check if the episode is done
-                    self.terminated = not self.done
-                    print("Sampling loop is over. Done flag: {}, Terminated flag: {}".format(self.done, self.terminated))
+    def load_model(self, path):
+        """
+            Load the model
+        """
+        checkpoint = torch.load(path)
+        self.Q = checkpoint["Q"]
+        self.V = checkpoint["V"]
+        self.U = checkpoint["U"]
+        self.theta = checkpoint["theta"]
+        self.theta_ref = checkpoint["theta_ref"]
+        self.exp_performances = checkpoint["exp_performances"]
+        self.reward_records = checkpoint["reward_records"]
+        self.Qs = checkpoint["Qs"]
+        self.Vs = checkpoint["Vs"]
+        self.temps = checkpoint["temps"]
+        self.thetas = checkpoint["thetas"]
+        self.theta_refs = checkpoint["theta_refs"]
+        self.episode = checkpoint["episode"]
+        self.lr_decay = checkpoint["lr_decay"]
+        self.temp_decay = checkpoint["temp_decay"]
+        print("Loaded model from {}".format(path))
 
-            
-            # Batch processing
-            if( (len(self.batch) > 0 and len(self.batch) % self.batch_size == 0) or self.done or self.terminated):
-                ############################################## Training ############################################################
-                self.train()                                                                        # train the model updating value functions and reference policy
-                r_sum = sum(self.rewards)                                                           # sum of rewards in the batch
-                
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
 
-                s_time = time.time()                                                                # start time
-                ####################################### Performance Improvement Bound ##################################################
-                pairs, teleport_bound = self.bound_eval()                                                                                                        # evaluate the bound for performance improvement
-                print("Candidate pairs: {}".format(pairs))
+    def load_model_from_mlflow(self, run_id, model_artifact_path):
+        """
+            Loads the model from an MLflow artifact given a run ID and artifact path.
+        """
 
-                if self.alpha_star != 0 or self.tau_star != 0:
-                    print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, episode, len(self.rewards), self.teleport_count))
-                else:
-                    print("No updates performed, episode: {} length: {} #teleports:{}".format(episode, len(self.rewards),self.teleport_count))
-                
+        # Construct the full path to the model artifact
+        model_path = mlflow.get_artifact_uri(artifact_path=model_artifact_path, run_id=run_id)
+        
+        # Load the model using the custom loading function
+        self.load_model(model_path)
 
-                if self.tau_star == 0 and self.tmdp.tau != 0:                                       # if converged to the original problem
-                    print("Converged to the original problem, episode {}".format(episode))          # to be done only once
-                    self.convergence_t = episode
-                    self.tmdp.update_tau(self.tau_star)                                             # update the transition function of the model
-                    self.stucked_count = 0                                                          # reset the stucked counter
-                elif self.tmdp.tau > 0:
-                    self.tmdp.update_tau(self.tau_star)
-                    self.stucked_count = 0
 
-                if self.alpha_star != 0:
-                    theta = self.alpha_star*self.theta_ref + (1-self.alpha_star)*theta              # update the policy parameters following the teleport bound and the reference policy
-                    self.stucked_count = 0
 
-                e_time = time.time()                                                                # end time
-                print("Time for bound evaluation: ", e_time - s_time)   
-            
-                self.lr_decay = max(1e-8, 1-(episode)/(self.episodes))
-                self.temp_decay = self.temp + (self.final_temp - self.temp)*(episode/self.episodes)
-
-                self.batch = []                                                                     # reset the batch
-                self.reward_records.append(r_sum)                                                   # append the sum of rewards to the records
+    def plot_expected_performance(self):
+        """
+            Plot the expected performance
+        """
+        plt.plot(self.exp_performances)
+        plt.xlabel("episodes")
+        plt.ylabel("Expected Performance")
+        plt.title("Expected Performance")
+        plt.show()

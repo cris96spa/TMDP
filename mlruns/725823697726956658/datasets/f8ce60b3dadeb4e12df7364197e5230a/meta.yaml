@@ -1,9 +1,0 @@
-digest: '84759061'
-name: dataset
-profile: '{"features_shape": [45, 13], "features_size": 585, "features_nbytes": 4680}'
-schema: '{"mlflow_tensorspec": {"features": "[{\"type\": \"tensor\", \"tensor-spec\":
-  {\"dtype\": \"float64\", \"shape\": [-1, 13]}}]", "targets": null}}'
-source: '{"tags": {"mlflow.user": "crist", "mlflow.source.name": "c:\\Users\\crist\\OneDrive
-  - Politecnico di Milano\\Polimi\\Tesi\\TMDP\\mlflow_env\\Lib\\site-packages\\ipykernel_launcher.py",
-  "mlflow.source.type": "LOCAL"}}'
-source_type: code
