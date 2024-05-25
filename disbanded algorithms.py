@@ -210,19 +210,6 @@ def curriculum_MPI_2(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, statu
 
     return {"Qs": Qs, "history": history, "thetas": thetas}#, "conv_Q": conv_Q, "conv_theta": conv_theta, "convergence_t": convergence_t}
 
-def compute_advantages(batch, V, lam, gamma):
-    adv = 0
-    for traj in batch:
-        for sample in reversed(traj):
-            s = sample["state"]
-            r = sample["reward"]
-            s_prime = sample["next_state"]
-            # Compute the temporal difference
-            sample["delta"] = r + gamma*V[s_prime] - V[s]
-            # GAE advantage
-            adv = sample["delta"] + gamma*lam*adv
-            sample["adv"] = adv
-
 
 def curriculum_PPO_2(tmdp:TMDP, Q, episodes=5000, epochs=10, alpha=.25, alpha_pol=.125, status_step=50000, batch_nS=1, temperature=1.0, lam=0., eps=0.2, biased=True):
     

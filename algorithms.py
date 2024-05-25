@@ -44,8 +44,8 @@ def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
     r_s_a = compute_r_s_a(P_mat, reward)
     Q = np.zeros((nS, nA))
     iterations = 0
-    loop = True
-    while loop:
+    done = False
+    while not done:
         Q_old = Q.copy()
         for s in range(nS):
             for a in range(nA):
@@ -53,7 +53,7 @@ def bellman_optimal_q(P_mat, reward, gamma, threshold=1e-6):
         iterations += 1 
         epsilon = np.linalg.norm(Q - Q_old, np.inf)
         if epsilon <= threshold:
-            loop = False
+            done = True
     return {"Q": Q, iterations: iterations}
 
 def bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau, threshold=1e-6):
@@ -78,6 +78,24 @@ def bellman_optimal_q_tau(P_mat, xi, reward, gamma, tau, threshold=1e-6):
         if epsilon <= threshold:
             done = True
     return {"Q": Q, "Q_p":Q_p, "Q_xi": Q_xi, "iterations": iterations}
+
+def bellman_modified(P_mat, reward, gamma, tau, threshold=1e-6):
+    nS, nA, _ = P_mat.shape
+    r_s_a = compute_r_s_a(P_mat, reward)
+
+    Q = np.zeros((nS, nA))
+    iterations = 0
+    done = False
+    while not done:
+        Q_old = Q.copy()
+        for s in range(nS):
+            for a in range(nA):
+                Q[s,a] = tau * (r_s_a[s,a] + gamma*(2+tau)* np.dot(P_mat[s,a,:], np.max(Q, axis=1)))
+        iterations += 1 
+        epsilon = np.linalg.norm(Q - Q_old, np.inf)
+        if epsilon <= threshold:
+            done = True
+    return {"Q": Q, "iterations": iterations}
 
 def compute_gradient_q_tau(P_mat, xi, reward, mu, gamma, tau):
     nS, nA, _ = P_mat.shape

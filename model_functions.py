@@ -697,3 +697,20 @@ def compute_teleport_bound_1_tau_test(tau, policy_adv, model_adv, gamma, d_inf_m
                                  d_inf_policy, d_exp_model, d_exp_policy, delta_U):
     return (16*d_exp_model**2*d_inf_model*delta_U*gamma**4*tau - 16*d_exp_model**2*d_inf_model*delta_U*gamma**3*tau + d_exp_model**2*d_inf_policy**2*delta_U**2*gamma**2 + 4*d_exp_model**2*d_inf_policy*delta_U*gamma**3 - 4*d_exp_model**2*d_inf_policy*delta_U*gamma**2 + 4*d_exp_model**2*gamma**4 - 8*d_exp_model**2*gamma**3 + 4*d_exp_model**2*gamma**2 - 4*d_exp_model*d_exp_policy*d_inf_model*d_inf_policy*delta_U**2*gamma**3 + 2*d_exp_model*d_exp_policy*d_inf_model*d_inf_policy*delta_U**2*gamma**2 + 4*d_exp_model*d_exp_policy*d_inf_model*delta_U*gamma**3 - 4*d_exp_model*d_exp_policy*d_inf_model*delta_U*gamma**2 - 8*d_exp_model*d_inf_model*delta_U*gamma**3*policy_adv + 8*d_exp_model*d_inf_model*delta_U*gamma**2*policy_adv + 4*d_exp_model*d_inf_policy*delta_U*gamma**2*model_adv - 4*d_exp_model*d_inf_policy*delta_U*gamma*model_adv + 8*d_exp_model*gamma**3*model_adv - 16*d_exp_model*gamma**2*model_adv + 8*d_exp_model*gamma*model_adv + d_exp_policy**2*d_inf_model**2*delta_U**2*gamma**2 + 4*d_exp_policy*d_inf_model*delta_U*gamma**2*model_adv - 4*d_exp_policy*d_inf_model*delta_U*gamma*model_adv + 4*gamma**2*model_adv**2 - 8*gamma*model_adv**2 + 4*model_adv**2)/(8*d_exp_model*d_inf_model*delta_U*gamma**2*(gamma - 1)**2)
 
+
+"""
+    Compute the number of time steps to converge to the original model
+"""
+def compute_n(gamma, tau, eps_model):
+    return np.ceil(2*gamma*tau/((1-gamma)*eps_model)) - 1
+
+"""
+    Compute the model step size to converge to the original model in n steps
+"""
+def compute_eps_model(gamma, tau, n):
+    return 2*gamma*tau/((n+1)*(1-gamma))
+
+def compute_tau_prime(gamma, tau, eps_model):
+    tau_prime = tau - eps_model*(1 - gamma)/(2*gamma)
+    tau_prime = max(0, tau_prime)
+    return tau_prime

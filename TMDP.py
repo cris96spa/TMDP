@@ -66,31 +66,32 @@ class TMDP(Env):
             if self.env.render_mode == "human":
                 self.env.render()
 
-            prob = self.xi[s_prime]*self.tau
+            prob = self.xi[s_prime]#*self.tau
             # In this case the done flag signal that a teleport happened
             
             return self.env.s, r, {"done":done, "teleport": True}, {"prob":prob}
         else:
             #print("Following regular probability transition function")
             s_prime, reward, flags, prob = self.env.step(a)
-            prob["prob"] = prob["prob"]*(1-self.tau)
+            #prob["prob"] = prob["prob"]*(1-self.tau)
             flags["teleport"] = False
+            reward = reward
             return s_prime, reward, flags, prob
 
     """
-        Update the teleport probability tau, and the associated transition probabilities P_tau and P_mat_tau
+        Update the teleport probability tau
         Args:
             tau (float): new teleport probability
     """
     def update_tau(self, tau):
         self.tau = tau
-        if tau == 0:
+
+    def compute_teleport_matrix(self):
+        if self.tau == 0:
             P_mat_tau = self.env.P_mat
         else:
-            # Simplified problem
-            P_mat_tau = (1 - tau) * self.env.P_mat + tau * self.xi[None, None, :]  # Broadcasting xi
-
-        self.P_mat_tau = P_mat_tau
+            P_mat_tau = (1 - self.tau) * self.env.P_mat #+ self.tau * self.xi[None, None, :]  # Broadcasting xi
+        return P_mat_tau
 
     def reset(
         self,

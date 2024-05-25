@@ -11,7 +11,7 @@ from contextlib import closing
 from io import StringIO
 from os import path
 from typing import List, Optional
-
+import matplotlib.pyplot as plt
 
 LEFT = 0
 DOWN = 1
@@ -54,7 +54,7 @@ def is_valid(board: List[List[str]], max_nS: int) -> bool:
     return False
 
 
-def generate_random_map(nS: int = 8, p: float = 0.8) -> List[str]:
+def generate_random_map(nS: int = 8, p: float = 0.8, seed=None) -> List[str]:
     """Generates a random valid map (one that has a path from start to goal)
 
     Args:
@@ -67,9 +67,11 @@ def generate_random_map(nS: int = 8, p: float = 0.8) -> List[str]:
     valid = False
     board = []  # initialize to make pyright happy
 
+    np_rand, seed = seeding.np_random(seed)
+
     while not valid:
         p = min(1, p)
-        board = np.random.choice(["F", "H"], (nS, nS), p=[p, 1 - p])
+        board = np_rand.choice(["F", "H"], (nS, nS), p=[p, 1 - p])
         board[0][0] = "S"
         board[-1][-1] = "G"
         valid = is_valid(board, nS)
@@ -170,29 +172,64 @@ class FrozenLakeEnv(DiscreteEnv):
         map_name="4x4",
         is_slippery=True,
         seed = None,
-        r_shape=False
+        reward_shape=False,
+        num_bins=0
     ):
         if desc is None and map_name is None:
-            desc = generate_random_map()
+            desc = generate_random_map(seed=seed)
         elif desc is None:
             desc = MAPS[map_name]
         self.desc = desc = np.asarray(desc, dtype="c")
         self.nrow, self.ncol = nrow, ncol = desc.shape
         self.nA = nA = 4
         self.nS = nS = nrow * ncol
-        self.r_shape = r_shape
         self.lastaction = None
         self.lastreward = None
-        if r_shape:
-            self.reward_range = (-1., nS)
-        else:
-            self.reward_range = (0., 1.)
-
-
         self.mu = np.array(desc == b"S").astype("float64").ravel()
         self.mu /= self.mu.sum()
-
         self.P = {s: {a: [] for a in range(nA)} for s in range(nS)}
+        self.reward_shape = reward_shape
+
+        # Reward shaping function
+        def reward_shaping(n, num_bins, reward_range=(-1, 1)):
+            rewards = np.zeros((n, n))
+            goal = (n-1, n-1)
+            max_distance = (goal[0] - 0) + (goal[1] - 0)
+            
+            # Calculate distances for each cell from the goal (Manhattan distance)
+            distances = np.zeros((n, n))
+            for i in range(n):
+                for j in range(n):
+                    distances[i, j] = abs(goal[0] - i) + abs(goal[1] - j)
+                    #distances[i,j] = np.sqrt((goal[0] - i)**2 + (goal[1] - j)**2)
+            
+            # Determine bin edges
+            bin_edges = np.linspace(0, max_distance, num_bins + 1)
+            # Flip the bin, the lower the distance, the higher the reward
+            bin_edges = np.flip(bin_edges)
+            # Calculate rewards for each bin using linear interpolation
+            bin_rewards = np.linspace(reward_range[0], reward_range[1], num_bins+1)
+            
+            # Assign rewards based on bins
+            for i in range(n):
+                for j in range(n):
+                    distance = distances[i, j]
+                    bin_index = np.digitize(distance, bin_edges, right=False)-1   # -1 because np.digitize starts from 1
+                    bin_index = max(0, bin_index)  # Ensure bin_index is within range [0, num_bins-1]
+                    rewards[i, j] = bin_rewards[bin_index]
+            # Set reward for the goal cell
+            rewards[goal[0], goal[1]] = reward_range[1]
+            return rewards
+
+        # Determine the number of bins for reward shaping
+        self.num_bins = num_bins if num_bins > 0 else int(nrow/3)
+        if self.reward_shape:
+            self.reward_range = (-1, 1)
+            self.shaped_rewards = reward_shaping(nrow, self.num_bins, self.reward_range)
+        else:
+            self.reward_range = (0, 1)
+            self.shaped_rewards = np.zeros((nrow, ncol))
+        
 
         def to_s(row, col):
             return row * ncol + col
@@ -214,11 +251,8 @@ class FrozenLakeEnv(DiscreteEnv):
             newletter = desc[newrow, newcol]
             terminated = bytes(newletter) in b"GH"
             reward = float(newletter == b"G")
-            if self.r_shape:
-                if reward:
-                    reward = nS*10000
-                else:
-                    reward = -1.
+            if self.reward_shape and terminated:
+                reward = self.shaped_rewards[newrow, newcol]
             return newstate, reward, terminated
 
         for row in range(nrow):
@@ -228,10 +262,7 @@ class FrozenLakeEnv(DiscreteEnv):
                     li = self.P[s][a]
                     letter = desc[row, col]
                     if letter in b"GH":
-                        if not r_shape:
-                            li.append((1.0, s, 0, True))
-                        else:
-                            li.append((1.0, s, -1, True))
+                        li.append((1.0, s, 0, True))
                     else:
                         if is_slippery:
                             for b in [(a - 1) % 4, a, (a + 1) % 4]:
@@ -244,8 +275,6 @@ class FrozenLakeEnv(DiscreteEnv):
         def compute_models():
             P_mat = np.zeros((nS, nA, nS))
             reward = np.zeros((nS, nA, nS))
-            if self.r_shape:
-                reward -= 1.
             allowed_actions = []
             for s in range(nS):
                 allowed_actions.append([1,1,1,1])
@@ -391,9 +420,15 @@ class FrozenLakeEnv(DiscreteEnv):
                 pygame.transform.scale(pygame.image.load(f_name), self.cell_nS)
                 for f_name in elfs
             ]
-
+        
         desc = self.desc.tolist()
         assert isinstance(desc, list), f"desc should be a list or an array, got {desc}"
+        
+        cmap = plt.colormaps['coolwarm']
+        if self.reward_shape:
+            reward_min = self.reward_range[0]
+            reward_max = self.reward_range[1]
+
         for y in range(self.nrow):
             for x in range(self.ncol):
                 pos = (x * self.cell_nS[0], y * self.cell_nS[1])
@@ -406,6 +441,13 @@ class FrozenLakeEnv(DiscreteEnv):
                     self.window_surface.blit(self.goal_img, pos)
                 elif desc[y][x] == b"S":
                     self.window_surface.blit(self.start_img, pos)
+                
+                if self.reward_shape:
+                    reward = self.shaped_rewards[x, y] 
+                    color = cmap((reward - reward_min) / (reward_max - reward_min))[:3]  # Normalize & RGB
+                    reward_surface = pygame.Surface(self.cell_nS, pygame.SRCALPHA)
+                    reward_surface.fill((int(255*color[0]), int(255*color[1]), int(255*color[2]), 128)) 
+                    self.window_surface.blit(reward_surface, pos)
 
                 pygame.draw.rect(self.window_surface, (180, 200, 230), rect, 1)
 
@@ -453,6 +495,7 @@ class FrozenLakeEnv(DiscreteEnv):
 
         with closing(outfile):
             return outfile.getvalue()
+
 
     def close(self):
         if self.window_surface is not None:
