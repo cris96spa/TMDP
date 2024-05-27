@@ -4,5 +4,4 @@ mlflow_env
 mlruns
 results
 img
-MLflow_CPMPO_RiverSwim.ipynb
-MLflow_CPMPOFrozen.ipynb
+models

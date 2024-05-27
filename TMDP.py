@@ -1,5 +1,4 @@
 import numpy as np
-from DiscreteEnv import DiscreteEnv
 from model_functions import *
 import pygame 
 from River_swim import River

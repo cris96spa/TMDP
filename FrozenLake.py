@@ -442,7 +442,7 @@ class FrozenLakeEnv(DiscreteEnv):
                 elif desc[y][x] == b"S":
                     self.window_surface.blit(self.start_img, pos)
                 
-                if self.reward_shape:
+                if self.reward_shape:# and desc[y][x] == b"H" or desc[y][x] == b"G":
                     reward = self.shaped_rewards[x, y] 
                     color = cmap((reward - reward_min) / (reward_max - reward_min))[:3]  # Normalize & RGB
                     reward_surface = pygame.Surface(self.cell_nS, pygame.SRCALPHA)

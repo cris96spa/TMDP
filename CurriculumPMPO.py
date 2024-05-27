@@ -17,17 +17,12 @@ import os
 
 class CurriculumPMPO():
 
-    def __init__(self, tmdp:TMDP, Q=None, theta=None, theta_ref=None, device=None, 
+    def __init__(self, tmdp:TMDP, theta=None, theta_ref=None, device=None, 
                  checkpoint=False, checkpoint_dir=None, checkpoint_name=None,
-                 checkpoint_step:int=50000):
+                 checkpoint_step:int=500):
         
         ######################################### Learning Quantities ###########################################
-        self.tmdp = tmdp                                                                                        #                             
-                                                                                                                #                         
-        if Q is None:                                                                                           #                          
-            Q = np.zeros((tmdp.nS, tmdp.nA))                                                                    #           
-        self.Q = Q                                                                                              #
-                                                                                                                #
+        self.tmdp = tmdp                                                                                        #                        
         self.V = np.zeros(tmdp.nS)                                                                              #           
                                                                                                                 #
         if theta is None:                                                                                       #                                      
@@ -60,11 +55,10 @@ class CurriculumPMPO():
         self.traj = []                              # current trajectory                                        #
         self.reward_records = []                    # avg_rewards over each processed batch                     #      
         self.exp_performances = []                  # expected performances over each processed batch           #
-        self.Qs = []                                # Q values during training                                  #
         self.Vs = []                                # V values during training                                  #
         self.temps = []                             # learning rates during training                            #
         self.thetas = []                            # policy parameters during training                         #    
-        self.theta_refs = []                        # reference policy parameters during training               #
+        self.taus = []                        # reference policy parameters during training               #
                                                                                                                 #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
@@ -164,11 +158,10 @@ class CurriculumPMPO():
                             
             ############################################# Checkpointing #############################################                     
             if (self.episode % self.checkpoint_step == 0) or self.done or self.terminated:
-                self.Qs.append(np.copy(self.Q))
                 self.Vs.append(np.copy(self.V))
                 self.temps.append(temp+self.temp_decay)
-                self.theta_refs.append(np.copy(self.theta_ref))
                 self.thetas.append(np.copy(self.theta))
+                self.taus.append(self.tmdp.tau)
                 
 
 
@@ -219,43 +212,40 @@ class CurriculumPMPO():
 
         # get softmax policy from current policy, used for exploration
         old_policy = get_softmax_policy(self.theta, temperature=dec_temp)
+        self.compute_gae(lam, self.tmdp.gamma)
         
         for _ in range(epochs):                                         # loop over epochs
-            
             if epochs > 1:                                              # shuffle the batch if more than one epoch
                 self.tmdp.env.np_random.shuffle(self.batch)             # shuffle the batch
             for traj in self.batch:                                     # loop over trajectories
-                if lam!= 0:                                     
-                    e = np.zeros((self.tmdp.nS, self.tmdp.nA))          # Reset eligibility traces at the beginning of each trajectory
+                """if lam!= 0:                                     
+                    e = np.zeros((self.tmdp.nS, self.tmdp.nA)) """         # Reset eligibility traces at the beginning of each trajectory
                 for j, sample in enumerate(traj):                       # loop over samples in the trajectory
                     
-                    s, a, r, s_prime, flags, t, k = sample              # unpack sample tuple    
+                    s, a, r, s_prime, flags, t, k, A = sample              # unpack sample tuple    
 
                     if not flags["teleport"]:                               # Following regular probability transitions function
                         ##################################### Train Value Functions #####################################
                         if flags["done"]:                                   # Terminal state reached or teleportation happened
-                            td_error = alpha_model*(r - self.Q[s, a])       # Consider only the reward
+                            td_error = alpha_model*(r - self.V[s])       # Consider only the reward
                             """elif flags["teleport"]:
                                 a_prime = traj[j+1][1]
                                 td_error = alpha_model*(r + self.tmdp.gamma*p*self.Q[s_prime, a_prime]- self.Q[s, a])"""
                         else:                                               # Regular state transition
-                            a_prime = traj[j+1][1]                          # get the next action     
-                            td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a]) 
+                            td_error = alpha_model*(r + self.tmdp.gamma*self.V[s_prime]- self.V[s]) 
                                             
-                        if lam == 0 or not flags["done"]:
-                            self.Q[s,a] += td_error                         # update Q values of the visited state-action pair
-                        else:
+                        #if lam == 0 or not flags["done"]:
+                        self.V[s] += td_error                         # update Q values of the visited state-action pair
+                        
+                        """else:
                             e[s,a] = 1                                      # frequency heuristic with saturation
-                            self.Q += e*td_error                            # update all Q values with eligibility traces
-                            e *= self.tmdp.gamma*lam                        # recency heuristic 
+                            self.V += e*td_error                            # update all Q values with eligibility traces
+                            e *= self.tmdp.gamma*lam"""                        # recency heuristic 
 
 
                         ######################################### Compute the Advantage #########################################
                         ref_policy = softmax_policy(self.theta_ref[s],     # get softmax probabilities associated to the current state
                                                     temperature=dec_temp) 
-                        
-                        Vf_s = np.matmul(ref_policy, self.Q[s])             # compute the value function
-                        A = self.Q[s,a] - Vf_s                              # compute advantage function
                         
                         
                         ######################################### Train Policy #########################################
@@ -283,11 +273,12 @@ class CurriculumPMPO():
                             g_log_pol = g_log_pol/dec_temp
                             
                         self.theta_ref[s] += alpha_pol*g_log_pol*min(surr_1, surr_2) # reference policy parameters update
-                    else:                                                   # Teleport happened 
-                        if lam!= 0:                                     
-                            e = np.zeros((self.tmdp.nS, self.tmdp.nA))
-        ref_pol = get_softmax_policy(self.theta_ref, temperature=self.final_temp)
-        self.V = compute_V_from_Q(self.Q, ref_pol)                      # update the value function
+                    else:
+                        pass                                                   # Teleport happened 
+                        """if lam!= 0:                                     
+                            e = np.zeros((self.tmdp.nS, self.tmdp.nA))"""
+        #ref_pol = get_softmax_policy(self.theta_ref, temperature=self.final_temp)
+        #self.V = compute_V_from_Q(self.Q, ref_pol)                      # update the value function
         self.theta = self.theta_ref                            # update the policy parameters with the reference policy parameters    
 
     def update_model(self, eps_model:float=0.2, adaptive:bool=True, tuning_rate:float=0.95):
@@ -314,8 +305,8 @@ class CurriculumPMPO():
         for traj in self.batch:
             last_adv = 0
             adv = 0
-            for t in reversed(range(len(traj))):
-                s, a, r, s_prime, flags, t, k = traj[t]
+            for i in reversed(range(len(traj))):
+                s, a, r, s_prime, flags, t, k = traj[i]
                 
                 if not flags["teleport"]:
                     if flags["done"]:                                   # Terminal state reached
@@ -326,24 +317,22 @@ class CurriculumPMPO():
                         adv = last_adv = delta + gamma*lam*last_adv     # GAE advantage
                 else:
                     adv = last_adv = 0                                  # Reset the advantage to zero
-                traj[t] = (s, a, r, s_prime, flags, t, k, adv)          # Update the trajectory with the advantage
+                traj[i] = (s, a, r, s_prime, flags, t, k, adv)          # Update the trajectory with the advantage
 
     def state_dict(self):
         """
             Return the state dictionary
         """
         return {
-            "Q": self.Q,
             "V": self.V,
             "theta": self.theta,
             "theta_ref": self.theta_ref,
             "exp_performances": self.exp_performances,
             "reward_records": self.reward_records,
-            "Qs": self.Qs,
             "Vs": self.Vs,
             "temps": self.temps,
             "thetas": self.thetas,
-            "theta_refs": self.theta_refs,
+            "taus": self.taus,
             "episode": self.episode,
             "lr_decay": self.lr_decay,
             "temp_decay": self.temp_decay,
@@ -363,17 +352,15 @@ class CurriculumPMPO():
             Load the checkpoint
         """
         checkpoint = torch.load("{}/{}/{}.pth".format(self.checkpoint_dir, self.checkpoint_name, episode))
-        self.Q = checkpoint["Q"]
         self.V = checkpoint["V"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
         self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
-        self.Qs = checkpoint["Qs"]
         self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
         self.thetas = checkpoint["thetas"]
-        self.theta_refs = checkpoint["theta_refs"]
+        self.taus = checkpoint["taus"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]
@@ -409,17 +396,15 @@ class CurriculumPMPO():
             Load the model
         """
         checkpoint = torch.load(path)
-        self.Q = checkpoint["Q"]
         self.V = checkpoint["V"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
         self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
-        self.Qs = checkpoint["Qs"]
         self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
         self.thetas = checkpoint["thetas"]
-        self.theta_refs = checkpoint["theta_refs"]
+        self.taus = checkpoint["taus"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]
@@ -430,7 +415,6 @@ class CurriculumPMPO():
         """
             Loads the model from an MLflow artifact given a run ID and artifact path.
         """
-
         # Construct the full path to the model artifact
         model_path = mlflow.get_artifact_uri(artifact_path=model_artifact_path, run_id=run_id)
         
