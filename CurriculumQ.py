@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import time
 from TMDP import TMDP
 from model_functions import *
-from algorithms import *
+from PolicyUtils import *
 import matplotlib.pyplot as plt
 import mlflow 
 import os
@@ -70,16 +70,15 @@ class CurriculumQ():
     def train(self, model_lr:float=.25,
               batch_size:int=1, lam:float=0., episodes:int=5000,
               exp_rate:float=0.4, eps_model:float=0.2,
-              param_decay:bool=True, log_mlflow:bool=False,
-              adaptive:bool=True, tuning_rate:float=0.80):
+              param_decay:bool=True, log_mlflow:bool=False,):
         """
             Curriculum MPI training and sample loop
         """
-        self.tmdp.reset()                           # reset the environment
+        self.tmdp.reset()                                                                   # reset the environment
 
         
         ################################################## Parameter Initialization ##################################################
-        self.episodes = episodes                    # number of episodes to train
+        self.episodes = episodes                                                            # number of episodes to train
         self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)               # number of updates to reach the original model
         self.update_rate = int(self.episodes/self.n_updates)                                # update rate in terms of number of episode between two updates
         self.update_counter = 0
@@ -127,7 +126,7 @@ class CurriculumQ():
                 print("Batch Processing time time: {}".format(e_time-s_time))
                 
                 ############################################# Model Update #############################################  
-                self.update_model(eps_model=eps_model, adaptive=adaptive, tuning_rate=tuning_rate)                                                                # update the model
+                self.update_model(eps_model=eps_model)                                                                # update the model
                 print("Episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
                 e_time = time.time()                                                          
             

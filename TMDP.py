@@ -1,7 +1,7 @@
 import numpy as np
 from model_functions import *
 import pygame 
-from River_swim import River
+from RiverSwim import RiverSwim
 from gymnasium.envs.toy_text.utils import categorical_sample
 from typing import List, Optional
 
@@ -56,7 +56,7 @@ class TMDP(Env):
             s_prime = categorical_sample(self.xi, self.env.np_random)
             self.env.lastaction = a
             r = self.env.reward[int(self.env.s), a, int(s_prime)]
-            self.env.lastreward = r
+            #self.env.lastreward = r
             self.env.s = s_prime
             done = self.env.is_terminal(self.env.s)
             if done:

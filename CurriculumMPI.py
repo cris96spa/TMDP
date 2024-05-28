@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import time
 from TMDP import TMDP
 from model_functions import *
-from algorithms import *
+from PolicyUtils import *
 import matplotlib.pyplot as plt
 import mlflow 
 import os
