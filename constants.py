@@ -15,3 +15,32 @@ SEEDS = SEEDS = [58864, 29859, 25025, 23110, 60779, 8649, 2999, 51036, 31886, 12
 23781, 44736, 18976, 55701, 52729, 4673, 30756, 32814, 53731, 23438, 50706, 60545,
 5311, 31595, 6278, 29786, 30120, 57297, 24259, 46744, 17263, 28933, 15406, 17107,
 1122, 50437, 40449, 21858, 53823, 22735, 65109, 45360]
+
+
+LINE_STYLES= ['solid', 'dashed', 'dashdot', 'dotted', 'None', ' ', '']
+
+COLORS = ['blue', 'green', 'red', 'c', 'orange', 'purple', 
+          'brown', 'pink', 'gray', 'olive', 'cyan', 
+          'lime', 'teal', 'lavender', 'tan', 'salmon', 
+          'gold', 'indigo', 'maroon', 'navy', 'peru', 
+          'plum', 'sienna', 'tomato', 'violet', 'wheat', 
+          'yellow', 'azure', 'beige', 'coral', 'crimson', 
+          'cyan', 'fuchsia', 'khaki', 'magenta', 
+          'olive', 'orchid', 'silver', 'snow', 'tan', 
+          'thistle', 'turquoise', 'yellow', 'aqua', 'black', 
+           'brown', 'chartreuse', 'chocolate', 'coral', 
+          'cornflower', 'darkblue', 'darkcyan', 'darkgoldenrod', 
+          'darkgray', 'darkgreen', 'darkkhaki', 'darkmagenta', 
+          'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 
+          'darksalmon', 'darkseagreen', 'darkslateblue', 'darkslategray', 
+          'darkturquoise', 'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 
+          'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'gainsboro', 
+          'ghostwhite', 'gold', 'goldenrod', 'greenyellow', 'honeydew', 'hotpink', 
+          'indianred', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen', 
+          'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan', 'lightgoldenrodyellow', 
+          'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon', 'lightseagreen', 
+          'lightskyblue', 'lightslategray', 'lightsteelblue', 'lightyellow', 
+          'limegreen', 'linen', 'magenta', 'mediumaquamarine', 'mediumblue', 
+          'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue', 
+          'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 
+          'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowh']

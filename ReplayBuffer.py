@@ -15,9 +15,10 @@ class ReplayBuffer:
         self.new_action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.done_memory = np.zeros(self.mem_size, dtype=np.bool_)
+        self.teleport_memory = np.zeros(self.mem_size, dtype=np.bool_)
         self.traj_counter = 0
     
-    def store_transition(self, state, action, reward, new_state, new_action, done):
+    def store_transition(self, state, action, reward, new_state, new_action, done, teleport):
         index = self.mem_cntr % self.mem_size
         self.state_memory[index] = state
         self.action_memory[index] = action
@@ -25,6 +26,7 @@ class ReplayBuffer:
         self.new_state_memory[index] = new_state
         self.new_action_memory[index] = new_action
         self.done_memory[index] = done
+        self.teleport_memory[index] = teleport
         if done:
             self.traj_counter += 1
 
@@ -47,7 +49,8 @@ class ReplayBuffer:
         new_states = self.new_state_memory[batch]
         new_actions = self.new_action_memory[batch]
         done = self.done_memory[batch]
-        return states, actions, rewards, new_states, new_actions, done
+        teleport = self.teleport_memory[batch]
+        return states, actions, rewards, new_states, new_actions, done, teleport
     
     def sample_last(self, batch_size=None):
         
@@ -68,7 +71,8 @@ class ReplayBuffer:
         new_states = self.new_state_memory[batch]
         new_actions = self.new_action_memory[batch]
         done = self.done_memory[batch]
-        return states, actions, rewards, new_states, new_actions, done
+        teleport = self.teleport_memory[batch]
+        return states, actions, rewards, new_states, new_actions, done, teleport
 
     def clear(self):
         self.mem_cntr = 0
@@ -79,6 +83,7 @@ class ReplayBuffer:
         self.new_action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.done_memory = np.zeros(self.mem_size, dtype=np.bool_)
+        self.teleport_memory = np.zeros(self.mem_size, dtype=np.bool_)
         self.traj_counter = 0
 
     def len(self):

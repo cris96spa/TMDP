@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import time
 from TMDP import TMDP
 from model_functions import *
-from PolicyUtils import *
+from policy_utils import *
 import matplotlib.pyplot as plt
 import mlflow 
 import os
@@ -19,7 +19,7 @@ class CurriculumMPI():
 
     def __init__(self, tmdp:TMDP, Q=None, theta=None, theta_ref=None, device=None, 
                  checkpoint=False, checkpoint_dir=None, checkpoint_name=None,
-                 checkpoint_step:int=50000):
+                 checkpoint_step:int=500):
         
         ######################################### Learning Quantities ###########################################
         self.tmdp = tmdp                                                                                        #                             
@@ -68,7 +68,7 @@ class CurriculumMPI():
         self.temps = []                             # learning rates during training                            #
         self.thetas = []                            # policy parameters during training                         #    
         self.theta_refs = []                        # reference policy parameters during training               #
-                                                                                                                #
+        self.taus = []                              # taus values during training                               #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
             checkpoint_dir = "./checkpoints"                                                                    #
@@ -85,7 +85,7 @@ class CurriculumMPI():
               batch_size:int=1, temp:float=1., lam:float=0.,
               final_temp:float=0.02, episodes:int=5000,
               check_convergence:bool=False, epochs:int=1,
-              biased:bool=False, use_delta_Q:bool=False, 
+              biased:bool=False, 
               param_decay:bool=True, log_mlflow:bool=False):
         """
             Curriculum MPI training and sample loop
@@ -94,7 +94,6 @@ class CurriculumMPI():
 
         
         ################################################## Parameter Initialization ##################################################
-        self.use_delta_Q = use_delta_Q              # flag to use delta Q instead of delta U for performance improvement bound
         self.biased = biased                        # flag to use biased or unbiased performance improvement bount
         self.episodes = episodes                    # number of episodes to train
         ####################################### Additional Counters #######################################
@@ -137,30 +136,26 @@ class CurriculumMPI():
             if( (len(self.batch) != 0 and len(self.batch) % batch_size == 0) or self.done or self.terminated):
                 
                 ############################################## Training ############################################################
-                alpha_model = model_lr*self.lr_decay                                          # model learning rate    
-                alpha_pol = pol_lr*self.lr_decay                                              # policy learning rate                   
-                dec_temp = temp+self.temp_decay                                               # temperature decay                                
-                self.update(alpha_model, alpha_pol, dec_temp, lam, epochs)                    # Update Value Functions and Reference Policy                                                                        # train the model updating value functions and reference policy
-                r_sum = sum(self.rewards)/batch_size                                          # sum of rewards in the batch
-                
-                if r_sum > 0:
-                    print("Got not null reward {}!".format(r_sum))
+                alpha_model = model_lr*self.lr_decay                                            # model learning rate    
+                alpha_pol = pol_lr*self.lr_decay                                                # policy learning rate                   
+                dec_temp = temp+self.temp_decay                                                 # temperature decay                                
+                self.update(alpha_model, alpha_pol, dec_temp, lam, epochs)                      # Update Value Functions and Reference Policy                                                                        # train the model updating value functions and reference policy
+                r_sum = sum(self.rewards)                                                       # sum of rewards in the batch
+
 
                 #################################### Compute Expected Performance ####################################
                 
                 ref_pol = get_softmax_policy(self.theta_ref, temperature=dec_temp) 
                 self.V = compute_V_from_Q(self.Q, ref_pol)
                 tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
-                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))    # expected performance of the policy
+                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))      # expected performance of the policy
                 print("Expected performance under current policy: ", self.exp_performances[-1])
-
-
 
                 ############################################# Bound evaluation #############################################
                 s_time = time.time()                                                                            # start time    
                 ref_policy = get_softmax_policy(self.theta_ref, temperature=dec_temp)                           # get softmax policy from reference policy
                 policy = get_softmax_policy(self.theta, temperature=dec_temp)                                   # get softmax policy from current policy
-                optimal_pairs, teleport_bounds = self.bound_eval(dec_temp, ref_policy, policy)                  # get candidate pairs and the associated teleport bound value
+                optimal_pairs, teleport_bounds = self.bound_eval(ref_policy, policy)                            # get candidate pairs and the associated teleport bound value
 
                 # Get the optimal values
                 self.alpha_star, self.tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds) # get the optimal values
@@ -169,9 +164,9 @@ class CurriculumMPI():
                 ########################################## Model and Policy Update ##########################################
                 print(optimal_pairs)
                 if self.alpha_star != 0 or self.tau_star != 0:                                                  # not null optimal values
-                    print("Alpha*: {} tau*: {} Episode: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, self.episode, len(self.rewards),self.teleport_count))
+                    print("Alpha*: {} tau*: {} Episode: {} reward: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, self.episode, r_sum, len(self.rewards),self.teleport_count))
                 else:
-                    print("No updates performed, episode: {} length: {} #teleports:{}".format(self.episode, len(self.rewards),self.teleport_count))
+                    print("No updates performed, episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
 
                 if self.tau_star >= 0 and self.tau_star < self.tmdp.tau:    
                     if self.tau_star == 0:                                                   
@@ -216,7 +211,8 @@ class CurriculumMPI():
                 self.temps.append(temp+self.temp_decay)
                 self.theta_refs.append(np.copy(self.theta_ref))
                 self.thetas.append(np.copy(self.theta))
-                
+                self.taus.append(self.tmdp.tau)
+
                 if log_mlflow:
                     pass
 
@@ -233,92 +229,78 @@ class CurriculumMPI():
         """
             Sample a step from the environment
         """
-        s = self.tmdp.env.s                                             # current state from the environment
-        a = select_action(policy)                                    # select action from the policy
-        s_prime, r, flags, p = self.tmdp.step(a)                        # take a step in the environment            
+        s = self.tmdp.env.s                                         # current state from the environment
+        a = select_action(policy)                                   # select action from the policy
+        s_prime, r, flags, p = self.tmdp.step(a)                    # take a step in the environment            
         flags["terminated"] = self.terminated
         
-
-        if not flags["teleport"]:                                       # Following regular probability transitions function
-            self.k += 1                                                 # increment the episode in the trajectory counter
-            self.t += 1                                                 # increment the episode in batch counter
-            sample = (s, a, r, s_prime, flags, self.t, self.k)          # sample tuple
-            self.traj.append(sample)                                    # append sample to the trajectory           
-            self.rewards.append(r)                                      # append reward to the rewards list   
+        self.k += 1                                                 # increment the episode in the trajectory counter
+        self.t += 1                                                 # increment the episode in batch counter
+        sample = (s, a, r, s_prime, flags, self.t, self.k)          # sample tuple
+        self.traj.append(sample)                                    # append sample to the trajectory           
+        self.rewards.append(r)                                      # append reward to the rewards list   
             
             
-            if flags["done"]:                                           # if termina state is reached                              
-                self.tmdp.reset()                                       # reset the environment
-                self.batch.append(self.traj)                            # append the trajectory to the batch
-                # reset current trajectory information
-                self.traj = []
-                self.k = 0
-        else:                                                               # Following teleportation distribution
-            self.teleport_count += 1                                        # increment the teleport counter
-            
-            if len(self.traj) > 0:                                          # if the trajectory is not empty
-                s, a, r, s_prime, flags, self.t, self.k = self.traj[-1]     # get the last sample in the trajectory
-                flags["teleport"] = True                                    # set the teleport flag to True
-                self.traj[-1] = (s, a, r, s_prime, flags, self.t, self.k)   # update the last sample in the trajectory                                                          
-                self.batch.append(self.traj)                                # append the trajectory to the batch
-                
-                # reset current trajectory information
-                self.traj = []
-                self.k = 0
+        if flags["done"]:                                           # if terminal state is reached                              
+            self.tmdp.reset()                                       # reset the environment
+            self.batch.append(self.traj)                            # append the trajectory to the batch
+            # reset current trajectory information
+            self.traj = []
+            self.k = 0
+        if flags["teleport"]:                                       # if teleport happened
+            self.teleport_count += 1                                # increment the teleport counter
 
         return flags
-
 
     def update(self, alpha_model, alpha_pol, dec_temp, lam, epochs=1):
         """
             Update the model using the collected batch of trajectories
         """
         for _ in range(epochs):                                         # loop over epochs
+            if epochs > 1:                                              
+                self.tmdp.env.np_random.shuffle(self.batch)             # shuffle the batch
             for traj in self.batch:                                     # loop over trajectories
-                e = np.zeros((self.tmdp.nS, self.tmdp.nA))              # Reset eligibility traces at the beginning of each trajectory
+                if lam!= 0:                                     
+                    e = np.zeros((self.tmdp.nS, self.tmdp.nA))              # Reset eligibility traces at the beginning of each trajectory
                 for j, sample in enumerate(traj):                       # loop over samples in the trajectory
                     
                     s, a, r, s_prime, flags, t, k = sample              # unpack sample tuple    
                 
                     ##################################### Train Value Functions #####################################
-                    if flags["done"]:                                   # Terminal state reached
-                        td_error = alpha_model*(r - self.Q[s, a])       # Consider only the reward
-                    elif flags["teleport"]:                             # Teleportation happend, we have to consider the action suggested by the policy in the next state
-                        pol = softmax_policy(self.theta[s],
-                                                temperature=dec_temp)   # get softmax policy
-                        a_prime = select_action(pol)           # select action from the policy
+                    if not flags["teleport"]:
+                        if flags["done"]:                                   # Terminal state reached
+                            td_error = alpha_model*(r - self.Q[s, a])       # Consider only the reward
+                        else:                                               # Regular state transition
+                            a_prime = traj[j+1][1]                          # get the next action     
+                            td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a]) 
+                                                                        
+                        if lam == 0 or not flags["done"]:
+                            self.Q[s,a] += td_error                         # update Q values of the visited state-action pair
+                        else:
+                            e[s,a] = 1                                      # frequency heuristic with saturation  
+                            self.Q += e*td_error                            # update all Q values with eligibility traces
+                            e = self.tmdp.gamma*lam*e                       # recency heuristic 
+
+                        ######################################### Compute the Advantage #########################################
+                        ref_policy = softmax_policy(self.theta_ref[s],     # get softmax probabilities associated to the current state
+                                                    temperature=dec_temp) 
                         
-                        # compute TD error
-                        td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a])
-                    else:                                             # Regular state transition
-                        a_prime = traj[j+1][1]                        # get the next action     
-                        td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a]) 
-                                                                    
-                    if lam == 0 or r != 0:
-                        self.Q[s,a] += td_error*e[s,a]                  # update Q values of the visited state-action pair
+                        Vf_s = np.matmul(ref_policy, self.Q[s])             # compute the value function
+                        A = self.Q[s,a] - Vf_s                              # compute advantage function
+                        
+                        ##################################### Compute U values #####################################
+                        self.U[s,a,s_prime] += alpha_model*(r + self.tmdp.gamma*self.V[s_prime] - self.U[s,a,s_prime]) 
+
+                        ######################################### Train Policy #########################################
+                        # Computing Policy Gradient
+                        g_log_pol = - ref_policy
+                        g_log_pol[a] += 1
+                        g_log_pol = g_log_pol/(dec_temp)
+                        self.theta_ref[s] += alpha_pol*g_log_pol*A          # reference policy parameters update
                     else:
-                        e[s,a] = 1                                      # frequency heuristic with saturation  
-                        self.Q += e*td_error                            # update all Q values with eligibility traces
-                        e = self.tmdp.gamma*lam*e                       # recency heuristic 
-
-                    ######################################### Compute the Advantage #########################################
-                    ref_policy = softmax_policy(self.theta_ref[s],     # get softmax probabilities associated to the current state
-                                                temperature=dec_temp) 
-                    
-                    Vf_s = np.matmul(ref_policy, self.Q[s])             # compute the value function
-                    A = self.Q[s,a] - Vf_s                              # compute advantage function
-                    
-                    ##################################### Compute U values #####################################
-                    self.U[s,a,s_prime] += alpha_model*(r + self.tmdp.gamma*self.V[s_prime] - self.U[s,a,s_prime]) 
-
-                    ######################################### Train Policy #########################################
-                    # Computing Policy Gradient
-                    g_log_pol = - ref_policy
-                    g_log_pol[a] += 1
-                    g_log_pol = g_log_pol/(dec_temp)
-                    self.theta_ref[s] += alpha_pol*g_log_pol*A          # reference policy parameters update
-
-    def bound_eval(self, dec_temp, ref_policy, policy):
+                        if lam != 0:
+                            e = np.zeros((self.tmdp.nS, self.tmdp.nA))      # Reset eligibility traces if teleport happened
+    def bound_eval(self, ref_policy, policy):
         """
             Evaluate the teleport bound for performance improvement
         """
@@ -340,10 +322,7 @@ class CurriculumMPI():
         self.d_exp_pol = get_d_exp_policy(tensor_pol, tensor_ref_pol, d)
 
         # Compute Delta U
-        if self.use_delta_Q:
-            delta_U = get_sup_difference(tensor_Q)
-        else:
-            delta_U = get_sup_difference(tensor_U) 
+        delta_U = get_sup_difference(tensor_U) 
         if delta_U == 0:
             delta_U = (self.tmdp.env.reward_range[1]-self.tmdp.env.reward_range[0])/(1-self.tmdp.gamma)
         self.delta_U = delta_U
@@ -404,6 +383,7 @@ class CurriculumMPI():
             "episode": self.episode,
             "lr_decay": self.lr_decay,
             "temp_decay": self.temp_decay,
+            "taus": self.taus
 
         }
 
@@ -435,6 +415,7 @@ class CurriculumMPI():
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]
+        self.taus = checkpoint["taus"]
         print("Loaded checkpoint at episode {}".format(episode))
 
     
@@ -482,6 +463,7 @@ class CurriculumMPI():
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]
+        self.taus = checkpoint["taus"]
         print("Loaded model from {}".format(path))
 
 

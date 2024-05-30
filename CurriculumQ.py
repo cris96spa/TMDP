@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import time
 from TMDP import TMDP
 from model_functions import *
-from PolicyUtils import *
+from policy_utils import *
 import matplotlib.pyplot as plt
 import mlflow 
 import os
@@ -54,7 +54,7 @@ class CurriculumQ():
         self.exp_performances = []                  # expected performances over each processed batch           #
         self.Qs = []                                # Q values during training                                  #
         self.Vs = []                                # V values during training                                  #
-                                                                                                                #
+        self.taus = []                              # tau values during training                                                                                                     #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
             checkpoint_dir = "./checkpoints"                                                                    #
@@ -79,8 +79,9 @@ class CurriculumQ():
         
         ################################################## Parameter Initialization ##################################################
         self.episodes = episodes                                                            # number of episodes to train
-        self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)               # number of updates to reach the original model
-        self.update_rate = int(self.episodes/self.n_updates)                                # update rate in terms of number of episode between two updates
+        if self.tmdp.tau != 0:                                                              # if the model is already the original model
+            self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
+            self.update_rate = int(self.episodes/self.n_updates)                            # update rate in terms of number of episode between two updates
         self.update_counter = 0
         ####################################### Additional Counters #######################################
         
@@ -97,8 +98,9 @@ class CurriculumQ():
             
             self.episode += 1                                                               # increment the episode counter
 
-            if self.episode % self.update_rate == 0:                                        # update the model
-                self.update_counter += 1
+            if self.tmdp.tau != 0:
+                if self.episode % self.update_rate == 0:                                    # update the model
+                    self.update_counter += 1
 
             if self.episode==self.episodes-1:                                               # if last episode   
                 self.done = flags["done"]                                                   # check if the episode is done
@@ -142,12 +144,11 @@ class CurriculumQ():
                 self.teleport_count = 0                                 # reset the teleport counter
                 self.t = 0                                              # reset the episode counter in the batch    
                 self.update_counter = 0                                 # reset the update counter
-                            
             ############################################# Checkpointing #############################################                     
             if (self.episode % self.checkpoint_step == 0) or self.done or self.terminated:
                 self.Qs.append(np.copy(self.Q))
                 self.Vs.append(np.copy(self.V))
-                
+                self.taus.append(self.tmdp.tau)
                 if log_mlflow:
                     pass
 
@@ -235,7 +236,7 @@ class CurriculumQ():
             if tau_prime == 0:
                 print("Convergence to the original model in {} steps".format(self.episode))
             self.tmdp.update_tau(tau_prime)
-            self.update_counter = 0
+            
 
     def state_dict(self):
         """
@@ -251,7 +252,7 @@ class CurriculumQ():
             "episode": self.episode,
             "lr_decay": self.lr_decay,
             "exp_rate_decay": self.exp_rate_decay,
-
+            "taus": self.taus
         }
 
     def save_checkpoint(self):
@@ -276,6 +277,7 @@ class CurriculumQ():
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.exp_rate_decay = checkpoint["exp_rate_decay"]
+        self.taus = checkpoint["taus"]
         print("Loaded checkpoint at episode {}".format(episode))
 
     
@@ -317,6 +319,7 @@ class CurriculumQ():
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.exp_rate_decay = checkpoint["exp_rate_decay"]
+        self.taus = checkpoint["taus"]
         print("Loaded model from {}".format(path))
 
 

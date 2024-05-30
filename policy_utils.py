@@ -13,6 +13,7 @@ from ReplayBuffer import ReplayBuffer
 
 # Reproducibility
 seed = None
+np_random = None
 
 def get_current_seed():
     global seed
@@ -111,37 +112,3 @@ def select_action(prob):
     return int(a)
 
 
-"""
-    Test policies on the original problem
-    Args:
-        - tmdp (TMDP): the teleporting MDP
-        - thetas (ndarray): collection of parameter vectors associated to the policies
-        - episodes (int): number of episodes to run
-        - temp (float): temperature value
-    return (ndarray): the average reward collected over trajectories for each policy
-"""
-def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-4):    
-    rewards = []
-    tau = tmdp.tau
-    
-    for theta in thetas:
-        pi = get_policy(get_softmax_policy(theta, temperature=temp))
-        tmdp.reset()
-        tmdp.update_tau(0.)
-        episode = 0
-        cum_r = 0
-        traj_count = 0
-        while episode < episodes:
-            s = tmdp.env.s
-            a = select_action(pi[s])
-            s_prime, reward, flags, prob = tmdp.step(a)
-            cum_r += reward
-            if flags["done"]:
-                tmdp.reset()
-                traj_count += 1
-            episode += 1
-        cum_r = cum_r/traj_count if traj_count > 0 else cum_r
-        rewards.append(cum_r)
-    
-    tmdp.update_tau(tau)
-    return rewards

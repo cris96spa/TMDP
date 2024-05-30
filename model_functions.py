@@ -2,7 +2,6 @@ import numpy as np
 from gymnasium import Env
 from scipy.special import softmax
 import math
-from utils import stochastic_argmax
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -60,12 +59,26 @@ def get_policy(Q, det=True):
     return (np.ndarray): the probability of moving from state s to state sprime under policy pi [nS, nS] 
 """
 def compute_transition_kernel(P_mat, xi, tau, pi):
-    P_mat_tau = (1-tau)*P_mat + tau*xi
-    
+   
     if torch.is_tensor(P_mat): # Tensor version
-        return torch.einsum('san,sa->sn', P_mat_tau, pi)
+        
+        P_mat_tau = (1-tau)*P_mat + tau*xi.unsqueeze(0).unsqueeze(1)
+        nS, nA = P_mat.shape[0], P_mat.shape[1]
+        for i in range(nS):
+            for j in range(nA):
+                assert round(torch.sum(P_mat_tau[i][j][:]).item()) == 1, "P_mat_tau does not sum to 1 at state {} and action {}".format(i, j)
+        
+        assert torch.all(P_mat_tau >= 0), "P_mat_tau contains negative values (Tensor)"
+        P_sprime_s = torch.einsum('san,sa->sn', P_mat_tau, pi)
+        assert torch.all(P_sprime_s >= 0), "P_sprime_s contains negative values (Tensor)"
+        return P_sprime_s
     else: # Numpy version
-        return np.einsum('san,sa->sn', P_mat_tau, pi)
+        xi_exp = np.expand_dims(np.expand_dims(xi, 0), 1)
+        P_mat_tau = (1-tau)*P_mat + tau*xi_exp
+        assert np.all(P_mat_tau >= 0), "P_mat_tau contains negative values (Numpy)"
+        P_sprime_s = np.einsum('san,sa->sn', P_mat_tau, pi)
+        assert np.all(P_sprime_s >= 0), "P_sprime_s contains negative values (Numpy)"
+        return P_sprime_s
 
 ######################### Value Functions #########################
 """
@@ -292,7 +305,6 @@ def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau, device=torch.device("cuda"
     else: # Numpy version
         nS, nA = pi.shape
         I = np.eye(nS)
-        Xi = np.tile(xi.astype('float64'), nS).reshape((nS, nS))
         P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
 
         inv = np.linalg.inv(I - gamma*P_sprime_s)
@@ -302,11 +314,17 @@ def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau, device=torch.device("cuda"
 def compute_d_from_tau_tensor(mu, P_mat, xi, pi, gamma, tau, device):
     nS, nA = pi.shape
     I = torch.eye(nS).to(device)
-    Xi = xi.repeat(nS, 1).T
     P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
-
+    # Ensure P_sprime_s is a valid stochastic matrix
+    assert torch.all(P_sprime_s > 0), "Transition matrix contains negative values"
+    
     inv = torch.inverse(I - gamma*P_sprime_s)
+
+    eigenvalues = torch.linalg.eigvals(I - gamma * P_sprime_s)
+    assert torch.all(eigenvalues != 0), "Matrix inversion may be unstable, zero eigenvalue found"
+    assert torch.all(np.abs(eigenvalues) > 1e-10), "Matrix inversion may be unstable, near-zero eigenvalue found"
     d = torch.matmul((1-gamma)*mu, inv)
+    assert torch.all(d >= 0), "State visit distribution contains negative values"
     return d
 
 """
@@ -345,6 +363,10 @@ def compute_grad_d_from_tau(P_mat, xi, mu, pi, gamma, tau):
 """
 def compute_delta(d, pi):
     delta = pi * d[:, None]
+    if torch.is_tensor(d):
+        assert torch.all(delta >= 0), "State action distribution contains negative values (Tensor)"
+    else:
+        assert np.all(delta >= 0), "State action distribution contains negative values (Numpy)" 
     return delta
 
 ######################### Difference Metrics #########################
@@ -586,6 +608,9 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
             tau_prime_1 = compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model, d_inf_pol, d_exp_pol, biased=biased)     
             if tau_prime_1 >= 0 and tau_prime_1 <= 1:
                 optimal_values.append((1., round(tau_prime_1, 5)))
+    else:
+        print(f"Model advantage is negative {model_adv}")
+        print("d_inf_model: {}, d_exp_model: {}".format(d_inf_model, d_exp_model))
 
     if len(optimal_values) == 0:
         print("No valid pairs found")
@@ -594,7 +619,7 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
     
     return optimal_values
 
-def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-7):
+def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-6):
     alpha_star, tau_star = optimal_pairs[stochastic_argmax(teleport_bounds)]
     if tau_star < threshold:
         tau_star = 0
@@ -714,3 +739,11 @@ def compute_tau_prime(gamma, tau, eps_model):
     tau_prime = tau - eps_model*(1 - gamma)/(2*gamma)
     tau_prime = max(0, tau_prime)
     return tau_prime
+
+
+def stochastic_argmax(value_list):
+    max_indices = np.where(value_list == np.max(value_list))[0]
+    if len(max_indices) == 1:
+        return max_indices[0]
+    
+    return np.random.choice(max_indices)

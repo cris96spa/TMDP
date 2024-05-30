@@ -10,7 +10,7 @@ from torch.nn import functional as F
 import time
 from TMDP import TMDP
 from model_functions import *
-from PolicyUtils import *
+from policy_utils import *
 import matplotlib.pyplot as plt
 import mlflow 
 import os
@@ -58,7 +58,7 @@ class CurriculumPMPO():
         self.Vs = []                                # V values during training                                  #
         self.temps = []                             # learning rates during training                            #
         self.thetas = []                            # policy parameters during training                         #    
-        self.taus = []                        # reference policy parameters during training               #
+        self.taus = []                              # taus values during training                               #
                                                                                                                 #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
@@ -87,8 +87,9 @@ class CurriculumPMPO():
         ################################################## Parameter Initialization ##################################################
         self.episodes = episodes                                                            # number of episodes to train
         self.final_temp = final_temp                                                        # final temperature
-        self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)               # number of updates to reach the original model
-        self.update_rate = int(self.episodes/self.n_updates)                                # update rate in terms of number of episode between two updates
+        if self.tmdp.tau != 0:                                                              # if the model is already the original model
+            self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
+            self.update_rate = int(self.episodes/self.n_updates)                            # update rate in terms of number of episode between two updates
         self.update_counter = 0                                                             # update counter
         ####################################### Additional Counters #######################################
         
@@ -106,8 +107,9 @@ class CurriculumPMPO():
             flags = self.sample_step(policy)                                             # sample a step from the environment
             
             self.episode += 1                                                               # increment the episode counter
-            if self.episode % self.update_rate == 0:                                        # update the model
-                self.update_counter += 1
+            if self.tmdp.tau != 0:
+                if self.episode % self.update_rate == 0:                                    # update the model
+                    self.update_counter += 1
             
             if self.episode==self.episodes-1:                                               # if last episode   
                 self.done = flags["done"]                                                   # check if the episode is done
@@ -159,11 +161,8 @@ class CurriculumPMPO():
             ############################################# Checkpointing #############################################                     
             if (self.episode % self.checkpoint_step == 0) or self.done or self.terminated:
                 self.Vs.append(np.copy(self.V))
-                self.temps.append(temp+self.temp_decay)
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
-                
-
 
                 if log_mlflow:
                     pass
@@ -200,7 +199,7 @@ class CurriculumPMPO():
             self.traj = []
             self.k = 0
         if flags["teleport"]:                                       # if teleport happened
-                self.teleport_count += 1                            # increment the teleport counter
+            self.teleport_count += 1                                # increment the teleport counter
 
         return flags
 
@@ -215,11 +214,11 @@ class CurriculumPMPO():
         self.compute_gae(lam, self.tmdp.gamma)
         
         for _ in range(epochs):                                         # loop over epochs
-            if epochs > 1:                                              # shuffle the batch if more than one epoch
+            if epochs > 1:                                              
                 self.tmdp.env.np_random.shuffle(self.batch)             # shuffle the batch
             for traj in self.batch:                                     # loop over trajectories
                 """if lam!= 0:                                     
-                    e = np.zeros((self.tmdp.nS, self.tmdp.nA)) """         # Reset eligibility traces at the beginning of each trajectory
+                    e = np.zeros((self.tmdp.nS, self.tmdp.nA)) """      # Reset eligibility traces at the beginning of each trajectory
                 for j, sample in enumerate(traj):                       # loop over samples in the trajectory
                     
                     s, a, r, s_prime, flags, t, k, A = sample              # unpack sample tuple    
