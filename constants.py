@@ -44,3 +44,12 @@ COLORS = ['blue', 'green', 'red', 'c', 'orange', 'purple',
           'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue', 
           'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 
           'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowh']
+
+MARKERS = [None, 'o', '^', 'D', 'x', '+', '.', ',',  'v',  '<', '>', 
+           '1', '2', '3', '4', '8', 's', 'p', '*', 'h', 
+           'H',    'd', '|', '_', 'P', 'X', 
+           0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+MARKER_FREQUENCY = [1300, 2000, 2400, 2900, 3500]
+
+MLFLOW_URI = "http://localhost:12832"

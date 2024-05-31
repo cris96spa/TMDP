@@ -159,3 +159,24 @@ def get_artifacts_from_experiment(experiment_id):
     for run_id in runs["run_id"]:
         artifacts.append(mlflow.get_artifact_uri(run_id=run_id))
     return artifacts
+
+
+def plot_avg_test_return(rewards, title, figsize=(10, 8)):
+    fig = plt.figure(figsize=figsize)
+    avg_rewards = np.average(rewards, axis=0)
+    std_dev = np.std(rewards, axis=0)
+    n_samples = len(rewards)
+    std_err = std_dev / np.sqrt(n_samples)
+    ci = 1.96
+    upper_bound = avg_rewards + ci * std_err
+    lower_bound = avg_rewards - ci * std_err
+    
+    plt.plot(avg_rewards, label='Average Return', color='r')
+    plt.fill_between(range(len(avg_rewards)), lower_bound, upper_bound, color='r', alpha=0.2, label='95% Confidence Interval')
+
+    plt.legend()
+    plt.title(title)
+    plt.xlabel('Episode')
+    plt.ylabel('Avg Return')
+    plt.show()
+    return fig

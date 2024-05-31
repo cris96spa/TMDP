@@ -1757,3 +1757,35 @@ def curriculum_PPO_test(tmdp:TMDP, Q, episodes=5000, alpha=.25, alpha_pol=.1, st
 
     return {"Qs": Qs, "history": history, "thetas": thetas, "reward_records": reward_records}
 
+
+
+def is_prime(n):
+    """Check if a number is a prime number."""
+    if n <= 1:
+        return False
+    if n <= 3:
+        return True
+    if n % 2 == 0 or n % 3 == 0:
+        return False
+    i = 5
+    while i * i <= n:
+        if n % i == 0 or n % (i + 2) == 0:
+            return False
+        i += 6
+    return True
+
+def generate_primes(start, count, step):
+    """Generate a list of prime numbers starting from a given number."""
+    primes = []
+    num = start
+    while len(primes) < count:
+        if is_prime(num):
+            count +=1
+            if count % step == 0:
+                primes.append(num)
+        num += 1
+    return primes
+
+# Generate 40 prime numbers greater than 40
+primes = generate_primes(1000, 30, 30)
+print(primes)

@@ -19,7 +19,7 @@ class CurriculumPMPO():
 
     def __init__(self, tmdp:TMDP, theta=None, theta_ref=None, device=None, 
                  checkpoint=False, checkpoint_dir=None, checkpoint_name=None,
-                 checkpoint_step:int=500):
+                 checkpoint_step:int=500, max_length:int=0):
         
         ######################################### Learning Quantities ###########################################
         self.tmdp = tmdp                                                                                        #                        
@@ -43,6 +43,7 @@ class CurriculumPMPO():
         self.done = False                           # flag to indicate end the training                         #
         self.terminated = False                     # flag to indicate the forced termination of the training   #
         self.rewards = []                           # rewards for current trajectory                            #
+        self.max_length = max_length                # maximum length of a trajectory                            #
         self.temp_decay = 0                         # temperature decay factor                                  #               
         self.lr_decay = 1                           # learning rate decay factor                                #
         self.episode = 0                            # episode counter                                           #
@@ -86,6 +87,7 @@ class CurriculumPMPO():
         
         ################################################## Parameter Initialization ##################################################
         self.episodes = episodes                                                            # number of episodes to train
+        self.max_length = self.episode if self.max_length == 0 else self.max_length         # maximum length of a trajectory
         self.final_temp = final_temp                                                        # final temperature
         if self.tmdp.tau != 0:                                                              # if the model is already the original model
             self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
@@ -189,10 +191,12 @@ class CurriculumPMPO():
         self.t += 1                                                 # increment the episode in batch counter
         sample = (s, a, r, s_prime, flags, self.t, self.k)          # sample tuple
         self.traj.append(sample)                                    # append sample to the trajectory           
+        if len(self.traj) >= self.max_length:                       
+            flags["terminated"] = True
         self.rewards.append(r)                                      # append reward to the rewards list   
             
             
-        if flags["done"]:                                           # if terminal state is reached                              
+        if flags["done"] or flags["terminated"]:                    # if terminal state is reached                              
             self.tmdp.reset()                                       # reset the environment
             self.batch.append(self.traj)                            # append the trajectory to the batch
             # reset current trajectory information
@@ -225,7 +229,7 @@ class CurriculumPMPO():
 
                     if not flags["teleport"]:                               # Following regular probability transitions function
                         ##################################### Train Value Functions #####################################
-                        if flags["done"]:                                   # Terminal state reached or teleportation happened
+                        if flags["done"] or flags["terminated"]:         # Terminal state reached or teleportation happened
                             td_error = alpha_model*(r - self.V[s])       # Consider only the reward
                             """elif flags["teleport"]:
                                 a_prime = traj[j+1][1]
@@ -249,8 +253,8 @@ class CurriculumPMPO():
                         
                         ######################################### Train Policy #########################################
                         # Using logarithm for numerical stability
-                        ref_log_pol = np.log(ref_policy[a])                 # compute the log policy from the reference policy
-                        old_log_pol = np.log(old_policy[s,a])               # compute the log policy from the current policy
+                        ref_log_pol = np.log(ref_policy[a]+ 1e-8)           # compute the log policy from the reference policy
+                        old_log_pol = np.log(old_policy[s,a] + 1e-8)        # compute the log policy from the current policy
                         ratio = np.exp(ref_log_pol - old_log_pol)           # compute the ratio between the two policies                    
                         
                         l_clip = np.clip(ratio, 1-eps_ppo, 1+eps_ppo)       # compute the clipped ratio
@@ -262,6 +266,10 @@ class CurriculumPMPO():
                             g_log_pol = - ref_policy                        # compute the gradient of the log policy
                             g_log_pol[a] += 1
                             g_log_pol = g_log_pol/dec_temp
+                            """if A > 0:
+                                print(f"Positive Advantage {A}, picked a good action {a} in state {s}, V[s]: {self.V[s]} reward: {r}")
+                                print(f"Terminated {flags['terminated']}, done {flags['done']}")
+                                print(f"g_log_pol: {g_log_pol}, surr_1: {surr_1}, surr_2: {surr_2}")"""
                             
                         elif A > 0:                                         # NO UPDATE
                             g_log_pol = 0                                   # if the advantage is positive, the gradient is zero
@@ -308,16 +316,17 @@ class CurriculumPMPO():
                 s, a, r, s_prime, flags, t, k = traj[i]
                 
                 if not flags["teleport"]:
-                    if flags["done"]:                                   # Terminal state reached
+                    if flags["done"] or flags["terminated"]:            # Terminal state reached
                         delta = r - self.V[s]                                
-                        adv = last_adv = delta                          # Consider only the reward 
+                        adv = last_adv = delta                          # Consider only the reward  
                     else:
-                        delta = r + gamma*self.V[s_prime] - self.V[s]             # Compute the temporal difference
+                        delta = r + gamma*self.V[s_prime] - self.V[s]   # Compute the temporal difference
                         adv = last_adv = delta + gamma*lam*last_adv     # GAE advantage
                 else:
                     adv = last_adv = 0                                  # Reset the advantage to zero
                 traj[i] = (s, a, r, s_prime, flags, t, k, adv)          # Update the trajectory with the advantage
 
+    
     def state_dict(self):
         """
             Return the state dictionary

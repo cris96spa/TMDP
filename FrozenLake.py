@@ -169,11 +169,14 @@ class FrozenLakeEnv(DiscreteEnv):
         self,
         render_mode: Optional[str] = None,
         desc=None,
-        map_name="4x4",
-        is_slippery=True,
+        map_name:str="4x4",
+        is_slippery:bool=True,
         seed = None,
-        reward_shape=False,
-        num_bins=0
+        reward_shape:bool=False,
+        num_bins:int=0,
+        goal_reward:float=1.,
+        shape_range=(-1, 0),
+        dense_reward:bool=False
     ):
         if desc is None and map_name is None:
             desc = generate_random_map(seed=seed)
@@ -189,9 +192,9 @@ class FrozenLakeEnv(DiscreteEnv):
         self.mu /= self.mu.sum()
         self.P = {s: {a: [] for a in range(nA)} for s in range(nS)}
         self.reward_shape = reward_shape
-
+        self.goal_reward = goal_reward
         # Reward shaping function
-        def reward_shaping(n, num_bins, reward_range=(-1, 1)):
+        def reward_shaping(n, num_bins, shape_range=(-1, 0), goal_reward=1):
             rewards = np.zeros((n, n))
             goal = (n-1, n-1)
             max_distance = (goal[0] - 0) + (goal[1] - 0)
@@ -208,7 +211,7 @@ class FrozenLakeEnv(DiscreteEnv):
             # Flip the bin, the lower the distance, the higher the reward
             bin_edges = np.flip(bin_edges)
             # Calculate rewards for each bin using linear interpolation
-            bin_rewards = np.linspace(reward_range[0], reward_range[1], num_bins+1)
+            bin_rewards = np.linspace(shape_range[0], shape_range[1], num_bins+1)
             
             # Assign rewards based on bins
             for i in range(n):
@@ -218,14 +221,15 @@ class FrozenLakeEnv(DiscreteEnv):
                     bin_index = max(0, bin_index)  # Ensure bin_index is within range [0, num_bins-1]
                     rewards[i, j] = bin_rewards[bin_index]
             # Set reward for the goal cell
-            rewards[goal[0], goal[1]] = reward_range[1]
+            rewards[goal[0], goal[1]] = goal_reward
             return rewards
 
         # Determine the number of bins for reward shaping
         self.num_bins = num_bins if num_bins > 0 else int(nrow/3)
         if self.reward_shape:
-            self.reward_range = (-1, 1)
-            self.shaped_rewards = reward_shaping(nrow, self.num_bins, self.reward_range)
+            self.reward_range = shape_range
+            self.shaped_rewards = reward_shaping(nrow, self.num_bins, 
+                                                 self.reward_range, goal_reward=goal_reward)
         else:
             self.reward_range = (0, 1)
             self.shaped_rewards = np.zeros((nrow, ncol))
@@ -251,8 +255,14 @@ class FrozenLakeEnv(DiscreteEnv):
             newletter = desc[newrow, newcol]
             terminated = bytes(newletter) in b"GH"
             reward = float(newletter == b"G")
-            if self.reward_shape and terminated:
-                reward = self.shaped_rewards[newrow, newcol]
+            
+            if self.reward_shape:
+                if dense_reward:                                        # Reward for each step
+                    reward = self.shaped_rewards[newrow, newcol] if not bytes(newletter) in b"H" else - nS
+                else:                                                   
+                    if terminated:                                      # Reward only at the terminal state
+                        reward = self.shaped_rewards[newrow, newcol]
+
             return newstate, reward, terminated
 
         for row in range(nrow):
@@ -295,7 +305,7 @@ class FrozenLakeEnv(DiscreteEnv):
         self.render_mode = render_mode
 
         # pygame utils
-        self.window_nS = (min(64 * ncol, 512), min(64 * nrow, 512))
+        self.window_nS = (min(64 * ncol, 768), min(64 * nrow, 768))
         self.cell_nS = (
             self.window_nS[0] // self.ncol,
             self.window_nS[1] // self.nrow,
