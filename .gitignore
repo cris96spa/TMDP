@@ -7,3 +7,4 @@ img
 models
 results 
 .vscode
+strip_notebook.py

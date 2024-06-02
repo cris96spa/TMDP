@@ -258,7 +258,9 @@ class FrozenLakeEnv(DiscreteEnv):
             
             if self.reward_shape:
                 if dense_reward:                                        # Reward for each step
-                    reward = self.shaped_rewards[newrow, newcol] if not bytes(newletter) in b"H" else - nS
+                    reward = self.shaped_rewards[newrow, newcol] 
+                    if bytes(newletter) in b"H":                        # Reward at the terminal state
+                        reward = min(reward*nS + abs(0 - row) + abs(0 - col), self.shaped_rewards[-1,-2])
                 else:                                                   
                     if terminated:                                      # Reward only at the terminal state
                         reward = self.shaped_rewards[newrow, newcol]

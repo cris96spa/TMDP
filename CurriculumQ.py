@@ -70,7 +70,8 @@ class CurriculumQ():
     def train(self, model_lr:float=.25,
               batch_size:int=1, lam:float=0., episodes:int=5000,
               exp_rate:float=0.4, eps_model:float=0.2,
-              param_decay:bool=True, log_mlflow:bool=False,):
+              param_decay:bool=True, log_mlflow:bool=False,
+              debug:bool=False):
         """
             Curriculum MPI training and sample loop
         """
@@ -82,6 +83,7 @@ class CurriculumQ():
         if self.tmdp.tau != 0:                                                              # if the model is already the original model
             self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
             self.update_rate = int(self.episodes/self.n_updates)                            # update rate in terms of number of episode between two updates
+        self.debug = debug                                                                  # debug flag
         self.update_counter = 0
         ####################################### Additional Counters #######################################
         
@@ -122,14 +124,16 @@ class CurriculumQ():
                 self.V = compute_V_from_Q(self.Q, get_policy(self.Q))                           # compute the value function from the Q function
                 tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
                 self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))      # expected performance of the policy
-                print("Expected performance under current policy: ", self.exp_performances[-1])
+                
 
                 e_time = time.time()                                                            # end time
-                print("Batch Processing time time: {}".format(e_time-s_time))
-                
+                if debug:
+                    print("Batch Processing time time: {}".format(e_time-s_time))
+                    print("Expected performance under current policy: ", self.exp_performances[-1])
                 ############################################# Model Update #############################################  
                 self.update_model(eps_model=eps_model)                                                                # update the model
-                print("Episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
+                if debug:
+                    print("Episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
                 e_time = time.time()                                                          
             
                 
@@ -149,6 +153,9 @@ class CurriculumQ():
                 self.Qs.append(np.copy(self.Q))
                 self.Vs.append(np.copy(self.V))
                 self.taus.append(self.tmdp.tau)
+                
+                if not debug and self.episode % (10*self.checkpoint_step) == 0:
+                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
                 if log_mlflow:
                     pass
 
@@ -232,7 +239,8 @@ class CurriculumQ():
             eps_n = eps_model*self.update_counter
             
             tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_n)
-            print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
+            if self.debug:
+                print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
             if tau_prime == 0:
                 print("Convergence to the original model in {} steps".format(self.episode))
             self.tmdp.update_tau(tau_prime)

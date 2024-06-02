@@ -19,7 +19,7 @@ class CurriculumPMPO():
 
     def __init__(self, tmdp:TMDP, theta=None, theta_ref=None, device=None, 
                  checkpoint=False, checkpoint_dir=None, checkpoint_name=None,
-                 checkpoint_step:int=500, max_length:int=0):
+                 checkpoint_step:int=500):
         
         ######################################### Learning Quantities ###########################################
         self.tmdp = tmdp                                                                                        #                        
@@ -43,7 +43,6 @@ class CurriculumPMPO():
         self.done = False                           # flag to indicate end the training                         #
         self.terminated = False                     # flag to indicate the forced termination of the training   #
         self.rewards = []                           # rewards for current trajectory                            #
-        self.max_length = max_length                # maximum length of a trajectory                            #
         self.temp_decay = 0                         # temperature decay factor                                  #               
         self.lr_decay = 1                           # learning rate decay factor                                #
         self.episode = 0                            # episode counter                                           #
@@ -78,7 +77,9 @@ class CurriculumPMPO():
                  final_temp:float=0.02, episodes:int=5000,
                  epochs:int=10, eps_ppo:float=0.2, eps_model:float=0.2,
                  param_decay:bool=True, log_mlflow:bool=False,
-                 adaptive:bool=True, tuning_rate:float=0.80):
+                 adaptive:bool=True, tuning_rate:float=0.80,
+                 max_length:int=0, entropy_coef:float=0.1,
+                 debug:bool=False):
         """
             Curriculum MPI training and sample loop
         """
@@ -87,8 +88,10 @@ class CurriculumPMPO():
         
         ################################################## Parameter Initialization ##################################################
         self.episodes = episodes                                                            # number of episodes to train
-        self.max_length = self.episode if self.max_length == 0 else self.max_length         # maximum length of a trajectory
+        self.max_length = self.episodes if max_length == 0 else max_length                  # maximum length of a trajectory
         self.final_temp = final_temp                                                        # final temperature
+        self.entropy_coef = entropy_coef                                                    # entropy coefficient
+        self.debug = debug                                                                  # debug flag
         if self.tmdp.tau != 0:                                                              # if the model is already the original model
             self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
             self.update_rate = int(self.episodes/self.n_updates)                            # update rate in terms of number of episode between two updates
@@ -135,16 +138,18 @@ class CurriculumPMPO():
                 p_s_time = time.time()                                                      # start time
                 tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
                 self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))    # expected performance of the policy
-                print("Expected performance under current policy: ", self.exp_performances[-1])
-                p_e_time = time.time()                                                      # end time
-                print("Expected Performance Computation time: {}".format(p_e_time-p_s_time))
                 
-                e_time = time.time()                                                          # end time
-                print("Batch Processing time time: {}".format(e_time-s_time))
+                e_time = time.time()                                                      # end time
+                
+                if debug:
+                    print("Expected performance under current policy: ", self.exp_performances[-1])
+                    print("Expected Performance Computation time: {}".format(e_time-p_s_time))                   
+                    print("Batch Processing time time: {}".format(e_time-s_time))
                 
                 ############################################# Model Update #############################################  
                 self.update_model(eps_model=eps_model, adaptive=adaptive, tuning_rate=tuning_rate)                                                                # update the model
-                print("Episode: {} reward: {} length: {} #teleports:{} update_counter: {}".format(self.episode, r_sum, len(self.rewards),self.teleport_count, self.update_counter))
+                if debug:
+                    print("Episode: {} reward: {} length: {} #teleports:{} update_counter: {}".format(self.episode, r_sum, len(self.rewards),self.teleport_count, self.update_counter))
                 e_time = time.time()                                                          
             
                 
@@ -161,11 +166,14 @@ class CurriculumPMPO():
                 self.update_counter = 0                                 # reset the update counter
                             
             ############################################# Checkpointing #############################################                     
+            
             if (self.episode % self.checkpoint_step == 0) or self.done or self.terminated:
                 self.Vs.append(np.copy(self.V))
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
-
+                
+                if not debug and self.episode % (10*self.checkpoint_step) == 0:
+                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
                 if log_mlflow:
                     pass
 
@@ -229,8 +237,8 @@ class CurriculumPMPO():
 
                     if not flags["teleport"]:                               # Following regular probability transitions function
                         ##################################### Train Value Functions #####################################
-                        if flags["done"] or flags["terminated"]:         # Terminal state reached or teleportation happened
-                            td_error = alpha_model*(r - self.V[s])       # Consider only the reward
+                        if flags["done"]:                               # Terminal state reached or teleportation happened
+                            td_error = alpha_model*(r - self.V[s])      # Consider only the reward
                             """elif flags["teleport"]:
                                 a_prime = traj[j+1][1]
                                 td_error = alpha_model*(r + self.tmdp.gamma*p*self.Q[s_prime, a_prime]- self.Q[s, a])"""
@@ -267,9 +275,15 @@ class CurriculumPMPO():
                             g_log_pol[a] += 1
                             g_log_pol = g_log_pol/dec_temp
                             """if A > 0:
-                                print(f"Positive Advantage {A}, picked a good action {a} in state {s}, V[s]: {self.V[s]} reward: {r}")
+                                print(f"Positive Advantage {A}, picked a good action {a} in state {s}, V[s]: {self.V[s]} V[s']: {self.V[s_prime]} reward: {r}")
                                 print(f"Terminated {flags['terminated']}, done {flags['done']}")
-                                print(f"g_log_pol: {g_log_pol}, surr_1: {surr_1}, surr_2: {surr_2}")"""
+                                print(f"theta_ref: {self.theta_ref[s]}")
+                                print(f"g_log_pol: {g_log_pol}, surr_1: {surr_1}, surr_2: {surr_2}")
+                                policy_entropy = self.entropy(ref_policy)           # compute the entropy of the policy    
+                                entropy_bonus = self.entropy_coef*policy_entropy    # compute the entropy bonus
+                                objective = min(surr_1, surr_2) + entropy_bonus     # compute the objective function
+                                print(f"Objective: {objective}")
+                                print(f"entropy_bonus: {entropy_bonus}")"""
                             
                         elif A > 0:                                         # NO UPDATE
                             g_log_pol = 0                                   # if the advantage is positive, the gradient is zero
@@ -279,7 +293,10 @@ class CurriculumPMPO():
                             g_log_pol[a] += 1
                             g_log_pol = g_log_pol/dec_temp
                             
-                        self.theta_ref[s] += alpha_pol*g_log_pol*min(surr_1, surr_2) # reference policy parameters update
+                        policy_entropy = self.entropy(ref_policy)                       # compute the entropy of the policy    
+                        entropy_bonus = self.entropy_coef*policy_entropy*self.lr_decay  # compute the entropy bonus
+                        objective = min(surr_1, surr_2) + entropy_bonus                 # compute the objective function
+                        self.theta_ref[s] += alpha_pol*g_log_pol*objective              # reference policy parameters update
                     else:
                         pass                                                   # Teleport happened 
                         """if lam!= 0:                                     
@@ -302,7 +319,8 @@ class CurriculumPMPO():
             eps_n = eps_model*self.update_counter
             
             tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_n)
-            print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
+            if self.debug:
+                print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
             if tau_prime == 0:
                 print("Convergence to the original model in {} steps".format(self.episode))
             self.tmdp.update_tau(tau_prime)
@@ -316,7 +334,7 @@ class CurriculumPMPO():
                 s, a, r, s_prime, flags, t, k = traj[i]
                 
                 if not flags["teleport"]:
-                    if flags["done"] or flags["terminated"]:            # Terminal state reached
+                    if flags["done"]:                                   # Terminal state reached
                         delta = r - self.V[s]                                
                         adv = last_adv = delta                          # Consider only the reward  
                     else:
@@ -326,7 +344,12 @@ class CurriculumPMPO():
                     adv = last_adv = 0                                  # Reset the advantage to zero
                 traj[i] = (s, a, r, s_prime, flags, t, k, adv)          # Update the trajectory with the advantage
 
-    
+    def entropy(self, policy):
+        """
+            Compute the entropy of the policy
+        """
+        return -np.sum(policy * np.log(policy + 1e-8))
+
     def state_dict(self):
         """
             Return the state dictionary
