@@ -121,16 +121,10 @@ class CurriculumMPI():
             self.episode += 1                                                               # increment the episode counter
 
             if self.episode==self.episodes-1:                                               # if last episode   
-                
-                if (self.alpha_star > 0 or self.tmdp.tau < 0.1) and stucked_count == 0 and check_convergence:
-                    self.biased = True
-                    self.episodes += min(20000, int(self.episodes * 0.05))                  # increase the number of episodes if still learning
-                    print("Increasing the number of episodes to {} ".format(self.episodes))
-                else:
-                    self.done = flags["done"]                                               # check if the episode is done
-                    self.terminated = not self.done
-                    print("Sampling loop is over. Done flag: {}, Terminated flag: {}".format(self.done, self.terminated))
-                    # If terminated last trajectory is inconsistent, therefore is discarded (if done, instead, already added in the sample_step function)
+                self.done = flags["done"]                                               # check if the episode is done
+                self.terminated = not self.done
+                print("Sampling loop is over. Done flag: {}, Terminated flag: {}".format(self.done, self.terminated))
+                # If terminated last trajectory is inconsistent, therefore is discarded (if done, instead, already added in the sample_step function)
                 
 
             # Batch processing
@@ -157,11 +151,12 @@ class CurriculumMPI():
 
 
                 ########################################## Model and Policy Update ##########################################
-                print(optimal_pairs)
-                if self.alpha_star != 0 or self.tau_star != 0:                                                  # not null optimal values
-                    print("Alpha*: {} tau*: {} Episode: {} reward: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, self.episode, r_sum, len(self.rewards),self.teleport_count))
-                else:
-                    print("No updates performed, episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
+                if debug:
+                    print(optimal_pairs)
+                    if self.alpha_star != 0 or self.tau_star != 0:                                                  # not null optimal values
+                        print("Alpha*: {} tau*: {} Episode: {} reward: {} length: {} #teleports:{}".format(self.alpha_star, self.tau_star, self.episode, r_sum, len(self.rewards),self.teleport_count))
+                    else:
+                        print("No updates performed, episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
 
                 if self.tau_star >= 0 and self.tau_star < self.tmdp.tau:    
                     if self.tau_star == 0:                                                   
@@ -174,8 +169,9 @@ class CurriculumMPI():
                     self.theta = self.alpha_star*self.theta_ref + (1-self.alpha_star)*self.theta
                     self.stucked_count = 0
                 
-                e_time = time.time()                                                                            # end time
-                print("Time for bound evaluation: ", e_time - s_time)
+                e_time = time.time()                                                                            # end time  
+                if debug:
+                    print("Time for bound evaluation: ", e_time - s_time)
                 
                 
                 ############################################# Decay Factors #############################################
@@ -190,12 +186,12 @@ class CurriculumMPI():
                 self.t = 0                                              # reset the episode counter in the batch    
 
                 ############################################# Convergence Check #############################################
-                if check_convergence:
+                if check_convergence and self.episode >= 0.25*self.episodes:
                     if self.alpha_star == 0 and self.tmdp.tau <= 0.1:
                         stucked_count += 1
                         self.biased = True
                         self.episode += min(10000, int(self.episodes * 0.10))
-                        if stucked_count > 50:
+                        if stucked_count > 10:
                             self.terminated = True
                             break
                             
@@ -207,7 +203,8 @@ class CurriculumMPI():
                 self.theta_refs.append(np.copy(self.theta_ref))
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
-
+                if not debug and self.episode % (10*self.checkpoint_step) == 0:
+                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
                 if log_mlflow:
                     pass
 
