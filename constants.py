@@ -52,4 +52,4 @@ MARKERS = [None, 'o', '^', 'D', 'x', '+', '.', ',',  'v',  '<', '>',
 
 MARKER_FREQUENCY = [1300, 2000, 2400, 2900, 3500]
 
-MLFLOW_URI = "http://localhost:12832"
+MLFLOW_URI = "http://192.168.0.182:12832"
