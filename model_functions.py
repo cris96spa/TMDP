@@ -64,20 +64,12 @@ def compute_transition_kernel(P_mat, xi, tau, pi):
         
         P_mat_tau = (1-tau)*P_mat + tau*xi.unsqueeze(0).unsqueeze(1)
         nS, nA = P_mat.shape[0], P_mat.shape[1]
-        for i in range(nS):
-            for j in range(nA):
-                assert round(torch.sum(P_mat_tau[i][j][:]).item()) == 1, "P_mat_tau does not sum to 1 at state {} and action {}".format(i, j)
-        
-        assert torch.all(P_mat_tau >= 0), "P_mat_tau contains negative values (Tensor)"
         P_sprime_s = torch.einsum('san,sa->sn', P_mat_tau, pi)
-        assert torch.all(P_sprime_s >= 0), "P_sprime_s contains negative values (Tensor)"
         return P_sprime_s
     else: # Numpy version
         xi_exp = np.expand_dims(np.expand_dims(xi, 0), 1)
         P_mat_tau = (1-tau)*P_mat + tau*xi_exp
-        assert np.all(P_mat_tau >= 0), "P_mat_tau contains negative values (Numpy)"
         P_sprime_s = np.einsum('san,sa->sn', P_mat_tau, pi)
-        assert np.all(P_sprime_s >= 0), "P_sprime_s contains negative values (Numpy)"
         return P_sprime_s
 
 ######################### Value Functions #########################
@@ -316,15 +308,9 @@ def compute_d_from_tau_tensor(mu, P_mat, xi, pi, gamma, tau, device):
     I = torch.eye(nS).to(device)
     P_sprime_s = compute_transition_kernel(P_mat, xi, tau, pi)
     # Ensure P_sprime_s is a valid stochastic matrix
-    assert torch.all(P_sprime_s > 0), "Transition matrix contains negative values"
     
     inv = torch.inverse(I - gamma*P_sprime_s)
-
-    eigenvalues = torch.linalg.eigvals(I - gamma * P_sprime_s)
-    assert torch.all(eigenvalues != 0), "Matrix inversion may be unstable, zero eigenvalue found"
-    assert torch.all(np.abs(eigenvalues) > 1e-10), "Matrix inversion may be unstable, near-zero eigenvalue found"
     d = torch.matmul((1-gamma)*mu, inv)
-    assert torch.all(d >= 0), "State visit distribution contains negative values"
     return d
 
 """

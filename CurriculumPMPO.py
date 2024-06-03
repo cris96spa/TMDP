@@ -220,8 +220,6 @@ class CurriculumPMPO():
             if epochs > 1:                                              
                 self.tmdp.env.np_random.shuffle(self.batch)             # shuffle the batch
             for traj in self.batch:                                     # loop over trajectories
-                """if lam!= 0:                                     
-                    e = np.zeros((self.tmdp.nS, self.tmdp.nA)) """      # Reset eligibility traces at the beginning of each trajectory
                 for j, sample in enumerate(traj):                       # loop over samples in the trajectory
                     
                     s, a, r, s_prime, flags, t, k, A = sample              # unpack sample tuple    
@@ -230,9 +228,6 @@ class CurriculumPMPO():
                         ##################################### Train Value Functions #####################################
                         if flags["done"]:                               # Terminal state reached or teleportation happened
                             td_error = alpha_model*(r - self.V[s])      # Consider only the reward
-                            """elif flags["teleport"]:
-                                a_prime = traj[j+1][1]
-                                td_error = alpha_model*(r + self.tmdp.gamma*p*self.Q[s_prime, a_prime]- self.Q[s, a])"""
                         else:                                               # Regular state transition
                             td_error = alpha_model*(r + self.tmdp.gamma*self.V[s_prime]- self.V[s]) 
                                             
