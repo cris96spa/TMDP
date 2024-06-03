@@ -10,3 +10,4 @@ models
 results 
 .vscode
 strip_notebooks.py
+__pycache__
