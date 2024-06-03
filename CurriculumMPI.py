@@ -62,7 +62,6 @@ class CurriculumMPI():
         self.batch = []                             # batch of trajectories                                     #
         self.traj = []                              # current trajectory                                        #
         self.reward_records = []                    # avg_rewards over each processed batch                     #      
-        self.exp_performances = []                  # expected performances over each processed batch           #
         self.Qs = []                                # Q values during training                                  #
         self.Vs = []                                # V values during training                                  #
         self.temps = []                             # learning rates during training                            #
@@ -143,17 +142,11 @@ class CurriculumMPI():
                 r_sum = sum(self.rewards)                                                       # sum of rewards in the batch
 
 
-                #################################### Compute Expected Performance ####################################
-                
-                ref_pol = get_softmax_policy(self.theta_ref, temperature=dec_temp) 
-                self.V = compute_V_from_Q(self.Q, ref_pol)
-                tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
-                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))      # expected performance of the policy
-                print("Expected performance under current policy: ", self.exp_performances[-1])
 
                 ############################################# Bound evaluation #############################################
                 s_time = time.time()                                                                            # start time    
                 ref_policy = get_softmax_policy(self.theta_ref, temperature=dec_temp)                           # get softmax policy from reference policy
+                self.V = compute_V_from_Q(self.Q, ref_policy)
                 policy = get_softmax_policy(self.theta, temperature=dec_temp)                                   # get softmax policy from current policy
                 optimal_pairs, teleport_bounds = self.bound_eval(ref_policy, policy)                            # get candidate pairs and the associated teleport bound value
 
@@ -373,7 +366,6 @@ class CurriculumMPI():
             "U": self.U,
             "theta": self.theta,
             "theta_ref": self.theta_ref,
-            "exp_performances": self.exp_performances,
             "reward_records": self.reward_records,
             "Qs": self.Qs,
             "Vs": self.Vs,
@@ -405,7 +397,6 @@ class CurriculumMPI():
         self.U = checkpoint["U"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
         self.Vs = checkpoint["Vs"]
@@ -453,7 +444,6 @@ class CurriculumMPI():
         self.U = checkpoint["U"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
         self.Vs = checkpoint["Vs"]
@@ -479,13 +469,3 @@ class CurriculumMPI():
         self.load_model(model_path)
 
 
-
-    def plot_expected_performance(self):
-        """
-            Plot the expected performance
-        """
-        plt.plot(self.exp_performances)
-        plt.xlabel("episodes")
-        plt.ylabel("Expected Performance")
-        plt.title("Expected Performance")
-        plt.show()

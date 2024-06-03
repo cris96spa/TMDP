@@ -26,9 +26,7 @@ class CurriculumQ():
                                                                                                                 #                         
         if Q is None:                                                                                           #                          
             Q = np.zeros((tmdp.nS, tmdp.nA))                                                                    #           
-        self.Q = Q                                                                                              #
-                                                                                                                #
-        self.V = np.zeros(tmdp.nS)                                                                              #                                     
+        self.Q = Q                                                                                              #                       
                                                                                                                 #
         if device is None:                                                                                      #                                      
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #   
@@ -51,10 +49,8 @@ class CurriculumQ():
         self.batch = []                             # batch of trajectories                                     #
         self.traj = []                              # current trajectory                                        #
         self.reward_records = []                    # avg_rewards over each processed batch                     #      
-        self.exp_performances = []                  # expected performances over each processed batch           #
-        self.Qs = []                                # Q values during training                                  #
-        self.Vs = []                                # V values during training                                  #
-        self.taus = []                              # tau values during training                                                                                                     #
+        self.Qs = []                                # Q values during training                                  #                                 
+        self.taus = []                              # tau values during training                                #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
             checkpoint_dir = "./checkpoints"                                                                    #
@@ -120,16 +116,10 @@ class CurriculumQ():
                 
                 r_sum = sum(self.rewards)                                                   # sum of rewards in the batch
                 
-                #################################### Compute Expected Performance ####################################
-                self.V = compute_V_from_Q(self.Q, get_policy(self.Q))                           # compute the value function from the Q function
-                tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
-                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))      # expected performance of the policy
                 
-
                 e_time = time.time()                                                            # end time
                 if debug:
                     print("Batch Processing time time: {}".format(e_time-s_time))
-                    print("Expected performance under current policy: ", self.exp_performances[-1])
                 ############################################# Model Update #############################################  
                 self.update_model(eps_model=eps_model)                                                                # update the model
                 if debug:
@@ -151,7 +141,6 @@ class CurriculumQ():
             ############################################# Checkpointing #############################################                     
             if (self.episode % self.checkpoint_step == 0) or self.done or self.terminated:
                 self.Qs.append(np.copy(self.Q))
-                self.Vs.append(np.copy(self.V))
                 self.taus.append(self.tmdp.tau)
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
@@ -252,11 +241,8 @@ class CurriculumQ():
         """
         return {
             "Q": self.Q,
-            "V": self.V,
-            "exp_performances": self.exp_performances,
             "reward_records": self.reward_records,
             "Qs": self.Qs,
-            "Vs": self.Vs,
             "episode": self.episode,
             "lr_decay": self.lr_decay,
             "exp_rate_decay": self.exp_rate_decay,
@@ -277,11 +263,8 @@ class CurriculumQ():
         """
         checkpoint = torch.load("{}/{}/{}.pth".format(self.checkpoint_dir, self.checkpoint_name, episode))
         self.Q = checkpoint["Q"]
-        self.V = checkpoint["V"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
-        self.Vs = checkpoint["Vs"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.exp_rate_decay = checkpoint["exp_rate_decay"]
@@ -319,11 +302,8 @@ class CurriculumQ():
         """
         checkpoint = torch.load(path)
         self.Q = checkpoint["Q"]
-        self.V = checkpoint["V"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
-        self.Vs = checkpoint["Vs"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.exp_rate_decay = checkpoint["exp_rate_decay"]
@@ -342,27 +322,3 @@ class CurriculumQ():
         # Load the model using the custom loading function
         self.load_model(model_path)
 
-
-
-    def plot_expected_performance(self):
-        """
-            Plot the expected performance
-        """
-
-        exp_performances = self.exp_performances
-        # Generate recent 50 interval average
-        avg_performances = []
-        for idx in range(len(exp_performances)):
-            avg_list = np.empty(shape=(1,), dtype=int)
-            if idx < 50:
-                avg_list = exp_performances[:idx+1]
-            else:
-                avg_list = exp_performances[idx-49:idx+1]
-            avg_performances.append(np.average(avg_list))
-        # Plot
-        plt.plot(exp_performances)
-        #plt.plot(avg_performances)
-        plt.xlabel("episodes")
-        plt.ylabel("Expected Performance")
-        plt.title("Expected Performance")
-        plt.show()

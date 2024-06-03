@@ -54,7 +54,6 @@ class CurriculumPMPO():
         self.batch = []                             # batch of trajectories                                     #
         self.traj = []                              # current trajectory                                        #
         self.reward_records = []                    # avg_rewards over each processed batch                     #      
-        self.exp_performances = []                  # expected performances over each processed batch           #
         self.Vs = []                                # V values during training                                  #
         self.temps = []                             # learning rates during training                            #
         self.thetas = []                            # policy parameters during training                         #    
@@ -130,20 +129,12 @@ class CurriculumPMPO():
                 alpha_pol = pol_lr*self.lr_decay                                              # policy learning rate                   
                 dec_temp = temp+self.temp_decay                                               # temperature decay                                
                 
-                self.update(alpha_model, alpha_pol, dec_temp, lam, epochs=epochs, eps_ppo=eps_ppo)                    # Update Value Functions and Reference Policy                                                                        # train the model updating value functions and reference policy
+                self.update(alpha_model, alpha_pol, dec_temp, lam, epochs=epochs, eps_ppo=eps_ppo)  # Update Value Functions and Reference Policy
                 
                 r_sum = sum(self.rewards)                                                  # sum of rewards in the batch
-                
-                #################################### Compute Expected Performance ####################################
-                p_s_time = time.time()                                                      # start time
-                tensor_V = torch.tensor(self.V, dtype=torch.float32).to(self.device)
-                self.exp_performances.append(compute_expected_j(tensor_V, self.tensor_mu))    # expected performance of the policy
-                
                 e_time = time.time()                                                      # end time
                 
-                if debug:
-                    print("Expected performance under current policy: ", self.exp_performances[-1])
-                    print("Expected Performance Computation time: {}".format(e_time-p_s_time))                   
+                if debug:   
                     print("Batch Processing time time: {}".format(e_time-s_time))
                 
                 ############################################# Model Update #############################################  
@@ -358,7 +349,6 @@ class CurriculumPMPO():
             "V": self.V,
             "theta": self.theta,
             "theta_ref": self.theta_ref,
-            "exp_performances": self.exp_performances,
             "reward_records": self.reward_records,
             "Vs": self.Vs,
             "temps": self.temps,
@@ -386,7 +376,6 @@ class CurriculumPMPO():
         self.V = checkpoint["V"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
@@ -430,7 +419,6 @@ class CurriculumPMPO():
         self.V = checkpoint["V"]
         self.theta = checkpoint["theta"]
         self.theta_ref = checkpoint["theta_ref"]
-        self.exp_performances = checkpoint["exp_performances"]
         self.reward_records = checkpoint["reward_records"]
         self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
@@ -451,28 +439,3 @@ class CurriculumPMPO():
         
         # Load the model using the custom loading function
         self.load_model(model_path)
-
-
-
-    def plot_expected_performance(self):
-        """
-            Plot the expected performance
-        """
-
-        exp_performances = self.exp_performances
-        # Generate recent 50 interval average
-        avg_performances = []
-        for idx in range(len(exp_performances)):
-            avg_list = np.empty(shape=(1,), dtype=int)
-            if idx < 50:
-                avg_list = exp_performances[:idx+1]
-            else:
-                avg_list = exp_performances[idx-49:idx+1]
-            avg_performances.append(np.average(avg_list))
-        # Plot
-        plt.plot(exp_performances)
-        #plt.plot(avg_performances)
-        plt.xlabel("episodes")
-        plt.ylabel("Expected Performance")
-        plt.title("Expected Performance")
-        plt.show()
