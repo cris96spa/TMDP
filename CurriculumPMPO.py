@@ -74,7 +74,7 @@ class CurriculumPMPO():
     def train(self, model_lr:float=.25,pol_lr:float=.12,
                  batch_size:int=1, temp:float=1., lam:float=0.,
                  final_temp:float=0.02, episodes:int=5000,
-                 epochs:int=10, eps_ppo:float=0.2, eps_model:float=0.2,
+                 epochs:int=10, eps_ppo:float=0.2, eps_shift:float=1e-3,
                  param_decay:bool=True, log_mlflow:bool=False,
                  adaptive:bool=True, tuning_rate:float=0.80,
                  max_length:int=0, entropy_coef:float=0.1,
@@ -91,10 +91,9 @@ class CurriculumPMPO():
         self.final_temp = final_temp                                                        # final temperature
         self.entropy_coef = entropy_coef                                                    # entropy coefficient
         self.debug = debug                                                                  # debug flag
-        if self.tmdp.tau != 0:                                                              # if the model is already the original model
-            self.n_updates = compute_n(self.tmdp.gamma, self.tmdp.tau, eps_model)           # number of updates to reach the original model
-            self.update_rate = int(self.episodes/self.n_updates)                            # update rate in terms of number of episode between two updates
-        self.update_counter = 0                                                             # update counter
+        self.d_inf_pol = 0                                                                  # discounted infinite policy advantage
+        self.eps_shift = eps_shift                                                          # threshold for the overall policy shift
+        
         ####################################### Additional Counters #######################################
         
         # Tensorize the environment for PyTorch
@@ -108,12 +107,8 @@ class CurriculumPMPO():
             policy = softmax_policy(self.theta[s], temperature=temp+self.temp_decay)        # get softmax policy
             
             ############################################## Sampling ############################################################
-            flags = self.sample_step(policy)                                             # sample a step from the environment
-            
+            flags = self.sample_step(policy)                                                # sample a step from the environment
             self.episode += 1                                                               # increment the episode counter
-            if self.tmdp.tau != 0:
-                if self.episode % self.update_rate == 0:                                    # update the model
-                    self.update_counter += 1
             
             if self.episode==self.episodes-1:                                               # if last episode   
                 self.done = flags["done"]                                                   # check if the episode is done
@@ -137,10 +132,11 @@ class CurriculumPMPO():
                 if debug:   
                     print("Batch Processing time time: {}".format(e_time-s_time))
                 
+
                 ############################################# Model Update #############################################  
-                self.update_model(eps_model=eps_model, adaptive=adaptive, tuning_rate=tuning_rate)                                                                # update the model
+                self.update_model()                                                                # update the model
                 if debug:
-                    print("Episode: {} reward: {} length: {} #teleports:{} update_counter: {}".format(self.episode, r_sum, len(self.rewards),self.teleport_count, self.update_counter))
+                    print("Episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
                 e_time = time.time()                                                          
             
                 
@@ -154,7 +150,6 @@ class CurriculumPMPO():
                 self.rewards = []                                       # reset the rewards list
                 self.teleport_count = 0                                 # reset the teleport counter
                 self.t = 0                                              # reset the episode counter in the batch    
-                self.update_counter = 0                                 # reset the update counter
                             
             ############################################# Checkpointing #############################################                     
             
@@ -164,7 +159,7 @@ class CurriculumPMPO():
                 self.taus.append(self.tmdp.tau)
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
+                    print("Episode: {} reward: {} length: {} tau {}".format(self.episode, r_sum, len(self.rewards), self.tmdp.tau))
                 if log_mlflow:
                     pass
 
@@ -233,12 +228,6 @@ class CurriculumPMPO():
                                             
                         #if lam == 0 or not flags["done"]:
                         self.V[s] += td_error                         # update Q values of the visited state-action pair
-                        
-                        """else:
-                            e[s,a] = 1                                      # frequency heuristic with saturation
-                            self.V += e*td_error                            # update all Q values with eligibility traces
-                            e *= self.tmdp.gamma*lam"""                        # recency heuristic 
-
 
                         ######################################### Compute the Advantage #########################################
                         ref_policy = softmax_policy(self.theta_ref[s],     # get softmax probabilities associated to the current state
@@ -260,16 +249,6 @@ class CurriculumPMPO():
                             g_log_pol = - ref_policy                        # compute the gradient of the log policy
                             g_log_pol[a] += 1
                             g_log_pol = g_log_pol/dec_temp
-                            """if A > 0:
-                                print(f"Positive Advantage {A}, picked a good action {a} in state {s}, V[s]: {self.V[s]} V[s']: {self.V[s_prime]} reward: {r}")
-                                print(f"Terminated {flags['terminated']}, done {flags['done']}")
-                                print(f"theta_ref: {self.theta_ref[s]}")
-                                print(f"g_log_pol: {g_log_pol}, surr_1: {surr_1}, surr_2: {surr_2}")
-                                policy_entropy = self.entropy(ref_policy)           # compute the entropy of the policy    
-                                entropy_bonus = self.entropy_coef*policy_entropy    # compute the entropy bonus
-                                objective = min(surr_1, surr_2) + entropy_bonus     # compute the objective function
-                                print(f"Objective: {objective}")
-                                print(f"entropy_bonus: {entropy_bonus}")"""
                             
                         elif A > 0:                                         # NO UPDATE
                             g_log_pol = 0                                   # if the advantage is positive, the gradient is zero
@@ -285,31 +264,32 @@ class CurriculumPMPO():
                         self.theta_ref[s] += alpha_pol*g_log_pol*objective              # reference policy parameters update
                     else:
                         pass                                                   # Teleport happened 
-                        """if lam!= 0:                                     
-                            e = np.zeros((self.tmdp.nS, self.tmdp.nA))"""
-        #ref_pol = get_softmax_policy(self.theta_ref, temperature=self.final_temp)
-        #self.V = compute_V_from_Q(self.Q, ref_pol)                      # update the value function
-        self.theta = self.theta_ref                            # update the policy parameters with the reference policy parameters    
+        
+        pi_ref = get_softmax_policy(self.theta_ref, temperature=dec_temp)
+        pi_old = get_softmax_policy(self.theta, temperature=dec_temp)
+        tensor_pi_ref = torch.tensor(pi_ref, dtype=torch.float32).to(self.device)
+        tensor_pi_old = torch.tensor(pi_old, dtype=torch.float32).to(self.device)
+
+        # Compute policy shift tresold
+        self.d_inf_pol = get_d_inf_policy(tensor_pi_ref, tensor_pi_old)
+        self.theta = np.copy(self.theta_ref)                            # update the policy parameters with the reference policy parameters    
 
     def update_model(self, eps_model:float=0.2, adaptive:bool=True, tuning_rate:float=0.95):
         """
             Update the model probability transition function
         """
-        if self.tmdp.tau > 0 and self.update_counter > 0:
+        if self.tmdp.tau > 0:
+            self.eps_model = self.eps_shift - self.d_inf_pol
             
-            """if adaptive: # Compute the eps_model threshold that lead convergence to the original model in remaining steps
-                if self.episode > self.episodes*(tuning_rate - (1-tuning_rate)) or self.tmdp.tau < 0.15: # Dynamic tuning part
-                    remaining_steps = max(1, self.episodes*tuning_rate - self.episode)
-                    eps_model = compute_eps_model(self.tmdp.gamma, self.tmdp.tau, remaining_steps)""" 
-            
-            eps_n = eps_model*self.update_counter
-            
-            tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_n)
-            if self.debug:
-                print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
-            if tau_prime == 0:
-                print("Convergence to the original model in {} steps".format(self.episode))
-            self.tmdp.update_tau(tau_prime)
+            if self.eps_model > 0:
+                eps_model_dynamic = self.eps_model*self.tmdp.gamma/(1-self.tmdp.gamma)
+                tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_model_dynamic)
+                if self.debug:
+                    print("Eps model {}".format(self.eps_shift - self.d_inf_pol))
+                    print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
+                if tau_prime == 0:
+                    print("Convergence to the original model in {} steps".format(self.episode))
+                self.tmdp.update_tau(tau_prime)
 
     def compute_gae(self, lam, gamma):
         
