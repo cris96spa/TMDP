@@ -1,6 +1,8 @@
 .venv
 mlartifacts
 mlflow_env
+env_mlflow
+mac_env
 mlruns
 results
 img

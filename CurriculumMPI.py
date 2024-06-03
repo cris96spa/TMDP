@@ -85,7 +85,8 @@ class CurriculumMPI():
               final_temp:float=0.02, episodes:int=5000,
               check_convergence:bool=False, epochs:int=1,
               biased:bool=False, 
-              param_decay:bool=True, log_mlflow:bool=False):
+              param_decay:bool=True, log_mlflow:bool=False,
+              debug:bool=False):
         """
             Curriculum MPI training and sample loop
         """
@@ -95,6 +96,7 @@ class CurriculumMPI():
         ################################################## Parameter Initialization ##################################################
         self.biased = biased                        # flag to use biased or unbiased performance improvement bount
         self.episodes = episodes                    # number of episodes to train
+        self.debug = debug                          # flag to print debug information
         ####################################### Additional Counters #######################################
         stucked_count = 0                           # number of batches updates without improvement
         
