@@ -66,7 +66,7 @@ class CurriculumQ():
     def train(self, model_lr:float=.25,
               batch_size:int=1, lam:float=0., episodes:int=5000,
               exp_rate:float=0.4, eps_model:float=0.2,
-              param_decay:bool=True, log_mlflow:bool=False,
+              param_decay:bool=True,
               debug:bool=False):
         """
             Curriculum MPI training and sample loop
@@ -145,8 +145,6 @@ class CurriculumQ():
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
                     print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
-                if log_mlflow:
-                    pass
 
                 if self.checkpoint:
                     #self.save_checkpoint(episode)
@@ -214,19 +212,13 @@ class CurriculumQ():
                     if lam!= 0:                                     
                             e = np.zeros((self.tmdp.nS, self.tmdp.nA))  # Reset eligibility traces if teleport happens
     
-    def update_model(self, eps_model:float=0.2, adaptive:bool=True, tuning_rate:float=0.95):
+    def update_model(self, eps_model:float=0.2):
         """
             Update the model probability transition function
         """
         if self.tmdp.tau > 0 and self.update_counter > 0:
-            
-            """if adaptive: # Compute the eps_model threshold that lead convergence to the original model in remaining steps
-                if self.episode > self.episodes*(tuning_rate - (1-tuning_rate)) or self.tmdp.tau < 0.15: # Dynamic tuning part
-                    remaining_steps = max(1, self.episodes*tuning_rate - self.episode)
-                    eps_model = compute_eps_model(self.tmdp.gamma, self.tmdp.tau, remaining_steps)""" 
-            
+        
             eps_n = eps_model*self.update_counter
-            
             tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_n)
             if self.debug:
                 print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))

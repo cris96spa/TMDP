@@ -75,10 +75,8 @@ class CurriculumPPO():
                  batch_size:int=1, temp:float=1., lam:float=0.,
                  final_temp:float=0.02, episodes:int=5000,
                  epochs:int=10, eps_ppo:float=0.2, eps_model:float=0.2,
-                 param_decay:bool=True, log_mlflow:bool=False,
-                 adaptive:bool=True, tuning_rate:float=0.80,
-                 max_length:int=0, entropy_coef:float=0.1,
-                 debug:bool=False):
+                 param_decay:bool=True,max_length:int=0, 
+                 entropy_coef:float=0.1, debug:bool=False):
         """
             Curriculum MPI training and sample loop
         """
@@ -138,7 +136,7 @@ class CurriculumPPO():
                     print("Batch Processing time time: {}".format(e_time-s_time))
                 
                 ############################################# Model Update #############################################  
-                self.update_model(eps_model=eps_model, adaptive=adaptive, tuning_rate=tuning_rate)                                                                # update the model
+                self.update_model(eps_model=eps_model)                                                                # update the model
                 if debug:
                     print("Episode: {} reward: {} length: {} #teleports:{} update_counter: {}".format(self.episode, r_sum, len(self.rewards),self.teleport_count, self.update_counter))
                 e_time = time.time()                                                          
@@ -165,8 +163,6 @@ class CurriculumPPO():
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
                     print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
-                if log_mlflow:
-                    pass
 
                 if self.checkpoint:
                     #self.save_checkpoint(episode)
@@ -291,19 +287,13 @@ class CurriculumPPO():
         #self.V = compute_V_from_Q(self.Q, ref_pol)                      # update the value function
         self.theta = self.theta_ref                            # update the policy parameters with the reference policy parameters    
 
-    def update_model(self, eps_model:float=0.2, adaptive:bool=True, tuning_rate:float=0.95):
+    def update_model(self, eps_model:float=0.2):
         """
             Update the model probability transition function
         """
         if self.tmdp.tau > 0 and self.update_counter > 0:
             
-            """if adaptive: # Compute the eps_model threshold that lead convergence to the original model in remaining steps
-                if self.episode > self.episodes*(tuning_rate - (1-tuning_rate)) or self.tmdp.tau < 0.15: # Dynamic tuning part
-                    remaining_steps = max(1, self.episodes*tuning_rate - self.episode)
-                    eps_model = compute_eps_model(self.tmdp.gamma, self.tmdp.tau, remaining_steps)""" 
-            
             eps_n = eps_model*self.update_counter
-            
             tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_n)
             if self.debug:
                 print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))
