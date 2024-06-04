@@ -17,15 +17,15 @@ SEEDS = SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12
 1122, 50437, 40449, 21858, 53823, 22735, 65109, 45360]
 
 
-LINE_STYLES= ['solid', 'dashed', 'dashdot', 'dotted', 'None', ' ', '']
+LINE_STYLES= ['solid', 'dashed', 'dashdot', 'dotted', "-.", ":"]
 
-COLORS = ['blue', 'green', 'red', 'c', 'orange', 'purple', 
+COLORS = ['darkorange', 'green', 'red', 'c', 'blue', 'purple', 
           'brown', 'pink', 'gray', 'olive', 'cyan', 
           'lime', 'teal', 'lavender', 'tan', 'salmon', 
           'gold', 'indigo', 'maroon', 'navy', 'peru', 
           'plum', 'sienna', 'tomato', 'violet', 'wheat', 
           'yellow', 'azure', 'beige', 'coral', 'crimson', 
-          'cyan', 'fuchsia', 'khaki', 'magenta', 
+          'fuchsia', 'khaki', 'magenta', 
           'olive', 'orchid', 'silver', 'snow', 'tan', 
           'thistle', 'turquoise', 'yellow', 'aqua', 'black', 
            'brown', 'chartreuse', 'chocolate', 'coral', 
@@ -45,9 +45,9 @@ COLORS = ['blue', 'green', 'red', 'c', 'orange', 'purple',
           'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 
           'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowh']
 
-MARKERS = [None, 'o', '^', 'D', 'x', '+', '.', ',',  'v',  '<', '>', 
+MARKERS = ['o', '^', 'D', 'x', 'H','+', '.', ',',  'v',  '<', '>', 
            '1', '2', '3', '4', '8', 's', 'p', '*', 'h', 
-           'H',    'd', '|', '_', 'P', 'X', 
+           'd', '|', '_', 'P', 'X', 
            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 MARKER_FREQUENCY = [1300, 2000, 2400, 2900, 3500]

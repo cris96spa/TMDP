@@ -142,9 +142,9 @@ def test_Q_policies(tmdp:TMDP, Qs, episodes=100):
             s_prime, reward, flags, prob = tmdp.step(a)
             cum_r += reward
             if flags["done"]:
-                break
                 tmdp.reset()
                 traj_count += 1
+                break
             episode += 1
         cum_r = cum_r/traj_count if traj_count > 0 else cum_r
         rewards.append(cum_r)

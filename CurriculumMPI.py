@@ -101,7 +101,6 @@ class CurriculumMPI():
         ####################################### Additional Counters #######################################
         stucked_count = 0                           # number of batches updates without improvement
         
-        # Tensorize the environment for PyTorch
         # Tensor conversion
         self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
         self.tensor_P_mat = torch.tensor(self.tmdp.env.P_mat, dtype=torch.float32).to(self.device)
@@ -137,7 +136,6 @@ class CurriculumMPI():
                 dec_temp = temp+self.temp_decay                                                 # temperature decay                                
                 self.update(alpha_model, alpha_pol, dec_temp, lam, epochs)                      # Update Value Functions and Reference Policy                                                                        # train the model updating value functions and reference policy
                 r_sum = sum(self.rewards)                                                       # sum of rewards in the batch
-
 
 
                 ############################################# Bound evaluation #############################################
@@ -205,7 +203,7 @@ class CurriculumMPI():
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
+                    print("Episode: {} reward: {} length: {} tau {}".format(self.episode, r_sum, len(self.rewards),self.tmdp.tau))
                 if log_mlflow:
                     pass
 
