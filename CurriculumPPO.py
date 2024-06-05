@@ -33,12 +33,12 @@ class CurriculumPPO():
             theta_ref = np.zeros((tmdp.nS, tmdp.nA))                                                            #    
         self.theta_ref = theta_ref                                                                              #                                        
                                                                                                                 #
-        if device is None:                                                                                      #                                      
+       if device is None:                                                                                      #                                      
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #
             if not torch.cuda.is_available():                                                                   #
                 if torch.backends.mps.is_available():                                                           #
                     device = torch.device("mps")                                                                #   
-                                                                                                                #
+        self.device = device                                                                                    #
         ######################################### Training Parameters ###########################################
         self.k = 0                                  # number of episodes in the current trajectory              #
         self.t = 0                                  # number of episodes in the current batch                   #

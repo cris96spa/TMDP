@@ -39,7 +39,7 @@ class CurriculumPMPO():
             if not torch.cuda.is_available():                                                                   #
                 if torch.backends.mps.is_available():                                                           #
                     device = torch.device("mps")                                                                #   
-                                                                                                                #
+        self.device = device                                                                                    #
         ######################################### Training Parameters ###########################################
         self.k = 0                                  # number of episodes in the current trajectory              #
         self.t = 0                                  # number of episodes in the current batch                   #
