@@ -260,6 +260,11 @@ def compute_expected_j(V, mu ):
 """
 def compute_d_from_tau(mu, P_mat, xi, pi, gamma, tau, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     
+    
+    if not torch.cuda.is_available():                                                                   
+        if torch.backends.mps.is_available():                                                           
+            device = torch.device("mps")                          
+
     if torch.is_tensor(P_mat): # Tensor version
         return compute_d_from_tau_tensor(mu, P_mat, xi, pi, gamma, tau, device)
     else: # Numpy version

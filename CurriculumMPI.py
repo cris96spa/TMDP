@@ -41,7 +41,10 @@ class CurriculumMPI():
         self.theta_ref = theta_ref                                                                              #                                        
                                                                                                                 #
         if device is None:                                                                                      #                                      
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #   
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #
+            if not torch.cuda.is_available():                                                                   #
+                if torch.backends.mps.is_available():                                                           #
+                    device = torch.device("mps")                                                                #   
         self.device = device                                                                                    #
                                                                                                                 #
         ######################################### Training Parameters ###########################################
@@ -64,10 +67,8 @@ class CurriculumMPI():
         self.traj = []                              # current trajectory                                        #
         self.reward_records = []                    # avg_rewards over each processed batch                     #      
         self.Qs = []                                # Q values during training                                  #
-        self.Vs = []                                # V values during training                                  #
         self.temps = []                             # learning rates during training                            #
         self.thetas = []                            # policy parameters during training                         #    
-        self.theta_refs = []                        # reference policy parameters during training               #
         self.taus = []                              # taus values during training                               #
         ######################################### Checkpoint Parameters #########################################
         if checkpoint_dir is None:                                                                              #                                         
@@ -148,7 +149,6 @@ class CurriculumMPI():
                 # Get the optimal values
                 self.alpha_star, self.tau_star = get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds) # get the optimal values
 
-
                 ########################################## Model and Policy Update ##########################################
                 if debug:
                     print(optimal_pairs)
@@ -171,7 +171,6 @@ class CurriculumMPI():
                 e_time = time.time()                                                                            # end time  
                 if debug:
                     print("Time for bound evaluation: ", e_time - s_time)
-                
                 
                 ############################################# Decay Factors #############################################
                 self.lr_decay = max(1e-8, 1-(self.episode)/(self.episodes)) if param_decay else 1                # learning rate decay
@@ -197,9 +196,6 @@ class CurriculumMPI():
             ############################################# Checkpointing #############################################                     
             if self.episode % self.checkpoint_step == 0 or self.done or self.terminated:
                 self.Qs.append(np.copy(self.Q))
-                self.Vs.append(np.copy(self.V))
-                self.temps.append(temp+self.temp_decay)
-                self.theta_refs.append(np.copy(self.theta_ref))
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
@@ -366,10 +362,8 @@ class CurriculumMPI():
             "theta_ref": self.theta_ref,
             "reward_records": self.reward_records,
             "Qs": self.Qs,
-            "Vs": self.Vs,
             "temps": self.temps,
             "thetas": self.thetas,
-            "theta_refs": self.theta_refs,
             "episode": self.episode,
             "lr_decay": self.lr_decay,
             "temp_decay": self.temp_decay,
@@ -397,10 +391,8 @@ class CurriculumMPI():
         self.theta_ref = checkpoint["theta_ref"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
-        self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
         self.thetas = checkpoint["thetas"]
-        self.theta_refs = checkpoint["theta_refs"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]
@@ -444,10 +436,8 @@ class CurriculumMPI():
         self.theta_ref = checkpoint["theta_ref"]
         self.reward_records = checkpoint["reward_records"]
         self.Qs = checkpoint["Qs"]
-        self.Vs = checkpoint["Vs"]
         self.temps = checkpoint["temps"]
         self.thetas = checkpoint["thetas"]
-        self.theta_refs = checkpoint["theta_refs"]
         self.episode = checkpoint["episode"]
         self.lr_decay = checkpoint["lr_decay"]
         self.temp_decay = checkpoint["temp_decay"]

@@ -17,7 +17,7 @@ SEEDS = SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12
 1122, 50437, 40449, 21858, 53823, 22735, 65109, 45360]
 
 
-LINE_STYLES= ['solid', 'dashed', 'dashdot', 'dotted', "-.", ":"]
+LINE_STYLES= ['solid']#, 'dashed', 'dashdot', 'dotted', "-.", ":"]
 
 COLORS = ['darkorange', 'green', 'red', 'c', 'blue', 'purple', 
           'brown', 'pink', 'gray', 'olive', 'cyan', 

@@ -29,8 +29,10 @@ class CurriculumQ():
         self.Q = Q                                                                                              #                       
                                                                                                                 #
         if device is None:                                                                                      #                                      
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #   
-        self.device = device                                                                                    #
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")                               #
+            if not torch.cuda.is_available():                                                                   #
+                if torch.backends.mps.is_available():                                                           #
+                    device = torch.device("mps")                                                                #   
                                                                                                                 #
         ######################################### Training Parameters ###########################################
         self.k = 0                                  # number of episodes in the current trajectory              #

@@ -8,6 +8,7 @@ import optuna
 import os
 import torch
 from policy_utils import *
+from constants import *
 
 def get_or_create_experiment(experiment_name):
     if experiment := mlflow.get_experiment_by_name(experiment_name):
@@ -98,7 +99,7 @@ def get_parent_artifacts(experiment_id):
     return (ndarray): the average reward collected over trajectories for each policy
 """
 def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5):    
-    rewards = []
+    returns = []
     tau = tmdp.tau
     
     for theta in thetas:
@@ -119,14 +120,14 @@ def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5):
                 traj_count += 1
             episode += 1
         cum_r = cum_r/traj_count if traj_count > 0 else cum_r
-        rewards.append(cum_r)
+        returns.append(cum_r)
     
     tmdp.update_tau(tau)
-    return rewards
+    return returns
 
 
 def test_Q_policies(tmdp:TMDP, Qs, episodes=100):    
-    rewards = []
+    returns = []
     tau = tmdp.tau
     
     for Q in Qs:
@@ -147,10 +148,10 @@ def test_Q_policies(tmdp:TMDP, Qs, episodes=100):
                 break
             episode += 1
         cum_r = cum_r/traj_count if traj_count > 0 else cum_r
-        rewards.append(cum_r)
+        returns.append(cum_r)
     
     tmdp.update_tau(tau)
-    return rewards
+    return returns
 
 
 def get_artifacts_from_experiment(experiment_id):
@@ -161,22 +162,90 @@ def get_artifacts_from_experiment(experiment_id):
     return artifacts
 
 
-def plot_avg_test_return(rewards, title, figsize=(10, 8)):
+def plot_avg_test_return(returns, title, figsize=(10, 8)):
     fig = plt.figure(figsize=figsize)
-    avg_rewards = np.average(rewards, axis=0)
-    std_dev = np.std(rewards, axis=0)
-    n_samples = len(rewards)
+    avg_returns = np.average(returns, axis=0)
+    std_dev = np.std(returns, axis=0)
+    n_samples = len(returns)
     std_err = std_dev / np.sqrt(n_samples)
     ci = 1.96
-    upper_bound = avg_rewards + ci * std_err
-    lower_bound = avg_rewards - ci * std_err
+    upper_bound = avg_returns + ci * std_err
+    lower_bound = avg_returns - ci * std_err
     
-    plt.plot(avg_rewards, label='Average Return', color='r')
-    plt.fill_between(range(len(avg_rewards)), lower_bound, upper_bound, color='r', alpha=0.2, label='95% Confidence Interval')
+    plt.plot(avg_returns, label='Average Return', color='r')
+    plt.fill_between(range(len(avg_returns)), lower_bound, upper_bound, color='r', alpha=0.2, label='95% Confidence Interval')
 
     plt.legend()
     plt.title(title)
     plt.xlabel('Episode')
     plt.ylabel('Avg Return')
+    plt.show()
+    return fig
+
+def generate_M_labels(length, x):
+    assert x >= 2, "Error: x must be >= than 2"
+
+    labels = []
+    for i in range(x):
+        if i == 0:
+            labels.append("0")
+        else:
+            value = round(length/(x-i)/1_000_000, 2)
+            labels.append(f"{value}M")
+
+    return labels
+
+
+def plot_experiment_results(results, title=None, figsize=(6, 6), 
+                            reduce:bool=False, extend:bool=False,
+                            conf_int:bool=False, x_scale:int=500, 
+                            x_len_ticks:int=2):
+    assert x_len_ticks >= 2, "Error: x_len_ticks must be >= than 2" 
+    plt.close('all')
+    rew = [r["tests_returns"] for r in results]
+    reduced_len = np.min([len(r[0]) for r in rew])
+    max_len = np.max([len(r[0]) for r in rew])
+    fig, ax = plt.subplots(figsize=figsize)
+
+    title = "Average Return" if title is None else title
+    for i, result in enumerate(results):
+        rewards = result["tests_returns"]
+        label = result["label"]
+        avg_rewards = np.average(rewards, axis=0)
+        if reduce:
+            avg_rewards = avg_rewards[:reduced_len]
+
+        #g_rewards = gaussian_filter1d(avg_rewards, sigma=1)
+
+        x_values = np.arange(len(avg_rewards)) * x_scale
+        ax.plot(x_values, avg_rewards, label=label, c=COLORS[i], marker = MARKERS[i%len(MARKERS)],
+                markevery=MARKER_FREQUENCY[i%len(MARKER_FREQUENCY)],
+                linestyle=LINE_STYLES[i%len(LINE_STYLES)],
+                #linewidth=1.5
+                )
+        
+        if conf_int:
+            std_dev = np.std(rewards, axis=0)
+            if reduce:
+                std_dev = std_dev[:reduced_len]
+            
+            n_samples = len(rewards)
+            std_err = std_dev / np.sqrt(n_samples)
+            ci = 1.96
+            upper_bound = avg_rewards + ci * std_err
+            lower_bound = avg_rewards - ci * std_err
+            plt.fill_between(x_values, lower_bound, upper_bound, color=COLORS[i], alpha=0.2)
+    
+    length = max_len if not reduce else reduced_len
+    length = length * x_scale
+    print(length)
+    ax.legend(loc="lower right", framealpha=1.)
+    ax.set_title(title)
+    labels = generate_M_labels(length, x_len_ticks)
+    
+    plt.xticks(np.linspace(0, length, x_len_ticks), labels)
+    ax.set_xlabel('Episodes')
+    #ax.set_ylabel('Avg Return')
+    #ax.grid()
     plt.show()
     return fig

@@ -3,7 +3,10 @@ import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+if not torch.cuda.is_available():
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        
 class ActorNet(nn.Module):
     def __init__(self, nS, nA, hidden_dim=64):
         super().__init__()

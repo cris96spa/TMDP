@@ -253,7 +253,7 @@ def compute_tau_prime_1(tau, model_adv, gamma, d_exp_model, delta_U, d_inf_model
     return round(tau_prime, 5)
 
 def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_exp_pol,
-                                       d_inf_model, d_exp_model, tau, gamma, biased=True):
+                                       d_inf_model, d_exp_model, tau, gamma, biased=False):
     optimal_values = []
     
     if pol_adv > 0:
