@@ -162,7 +162,7 @@ class CurriculumPMPO():
                 self.taus.append(self.tmdp.tau)
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {} tau {}".format(self.episode, r_sum, len(self.rewards), self.tmdp.tau))
+                    print("Episode: {} reward: {} length: {} tau {} d_inf_pol {}".format(self.episode, r_sum, len(self.rewards), self.tmdp.tau, self.d_inf_pol))
                 if log_mlflow:
                     pass
 

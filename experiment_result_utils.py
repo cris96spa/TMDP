@@ -47,24 +47,38 @@ def load_from_mlflow(artifact_uri):
     print("Dictionary loaded from MLflow")
     return dict
 
-def get_nested_runs(experiment_id):
+def get_run_id_by_name(experiment_id, run_name):
+    client = MlflowClient()
+    filter_string = f"tags.`mlflow.runName` = '{run_name}'"
+    runs = client.search_runs(experiment_ids=[experiment_id], filter_string=filter_string)
+    if not runs:
+        raise ValueError(f"No run found with name: {run_name}")
+    return runs[0].info.run_id
+
+def get_nested_runs(experiment_id, run_name=None):
     client = MlflowClient()
     runs = client.search_runs(experiment_ids=[experiment_id])
-    parent_runs = [run for run in runs if run.data.tags.get('mlflow.parentRunId') is not None]
-    return parent_runs
+    if run_name is None:
+        nested_runs = [run for run in runs if run.data.tags.get('mlflow.parentRunId') is not None]
+    else:
+        nested_runs = [run for run in runs if run_name in run.data.tags.get('mlflow.runName') and run.data.tags.get('mlflow.parentRunId') is not None]
+    return nested_runs
 
-def get_nested_artifacts(experiment_id):
-    nested_runs = get_nested_runs(experiment_id)
+
+def get_nested_artifacts(experiment_id, run_name=None):
+    nested_runs = get_nested_runs(experiment_id, run_name=run_name)
     client = MlflowClient()
     artifacts = []
     for run in nested_runs:
         base_uri = run.info.artifact_uri
+        if len(client.list_artifacts(run.info.run_id)) == 0:
+            continue
         resource_uri = client.list_artifacts(run.info.run_id)[0].path
         artifact_uri = base_uri+"/"+resource_uri
         result = load_from_mlflow(artifact_uri)
         artifacts.append(result)
-
     return artifacts
+
 
 def get_parent_runs(experiment_id):
     client = MlflowClient()

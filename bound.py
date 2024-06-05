@@ -290,8 +290,8 @@ def get_teleport_bound_optimal_values(pol_adv, model_adv, delta_U, d_inf_pol, d_
     
     return optimal_values
 
-def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-6):
-    alpha_star, tau_star = optimal_pairs[stochastic_argmax(teleport_bounds)]
+def get_teleport_bound_optima_pair(optimal_pairs, teleport_bounds, threshold=1e-3):
+    alpha_star, tau_star = optimal_pairs[np.argmax(teleport_bounds)]
     if tau_star < threshold:
         tau_star = 0
     return (alpha_star, tau_star)
