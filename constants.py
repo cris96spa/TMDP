@@ -17,7 +17,7 @@ SEEDS = SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12
 1122, 50437, 40449, 21858, 53823, 22735, 65109, 45360]
 
 
-LINE_STYLES= ['solid']#, 'dashed', 'dashdot', 'dotted', "-.", ":"]
+LINE_STYLES= ['solid']#, 'dashed', 'dashdot', 'dotted', '-.', ':']
 
 COLORS = ['darkorange', 'green', 'red', 'c', 'blue', 'purple', 
           'brown', 'pink', 'gray', 'olive', 'cyan', 
@@ -44,12 +44,123 @@ COLORS = ['darkorange', 'green', 'red', 'c', 'blue', 'purple',
           'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue', 
           'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 
           'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowh']
-
 MARKERS = ['o', '^', 'D', 'x', 'H','+', '.', ',',  'v',  '<', '>', 
            '1', '2', '3', '4', '8', 's', 'p', '*', 'h', 
            'd', '|', '_', 'P', 'X', 
            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
-MARKER_FREQUENCY = [1300, 2000, 2400, 2900, 3500]
 
-MLFLOW_URI = "http://192.168.0.182:12832"
+MARKERS_DICT = {
+    'CurrMPI': 's', 
+    'CurrPMPO': 'D', 
+    'CurrPPO': '^', 
+    'CurrQ': '*', 
+    'PPO': 'x', 
+    'Q': 'H'
+}
+LINE_STYLES_DICT = {
+    'CurrMPI': 'dotted', 
+    'CurrPMPO': 'solid', 
+    'CurrPPO': 'dashdot', 
+    'CurrQ': '--', 
+    'PPO': 'dashed', 
+    'Q': '-.'
+}
+
+COLORS_DICT = { # COLOR BLIND FRIENDLY
+    'CurrMPI': '#000000',  
+    'CurrPMPO': '#E69F00',  
+    'CurrPPO': '#56B4E9',  
+    'CurrQ': '#D55E00',    
+    'PPO': '#0072B2',      
+    'Q': '#009E73',        
+}
+
+MARKER_SIZE_DICT = {
+    'CurrMPI': 6, 
+    'CurrPMPO': 6, 
+    'CurrPPO': 7, 
+    'CurrQ': 7, 
+    'PPO': 6, 
+    'Q': 6
+}
+
+MARKER_FREQUENCY_DICT = {
+    'CurrMPI': 1300, 
+    'CurrPMPO': 2000, 
+    'CurrPPO': 2400, 
+    'CurrQ': 2900, 
+    'PPO': 3500, 
+    'Q': 3700
+}
+
+MARKER_LOG_FREQUENCY_DICT = {
+    'CurrMPI': 0.61, 
+    'CurrPMPO': 0.29, 
+    'CurrPPO': 0.33, 
+    'CurrQ': 0.4, 
+    'PPO': 0.50, 
+    'Q': 0.59
+}
+
+
+MLFLOW_URI = 'http://192.168.0.182:12832'
+
+
+COLORS_DICT = { # Category 10
+    'CurrMPI': '#1F77B4', 
+    'CurrPMPO': '#FF7F0E',  
+    'CurrPPO': '#2CA02C',  
+    'CurrQ': '#D62728',    
+    'PPO': '#9467BD',      
+    'Q': '#8C564B',        
+}
+
+COLORS_DICT_DARK = { # COLOR BLIND FRIENDLY
+    'CurrMPI': '#000000',  
+    'CurrPMPO': '#E69F00',  
+    'CurrPPO': '#56B4E9',  
+    'CurrQ': '#D55E00',    
+    'PPO': '#0072B2',      
+    'Q': '#009E73',        
+}
+
+
+COLORS_DICT_OKABE_ITO = {
+    'CurrMPI': '#E69F00',  # Orange
+    'CurrPMPO': '#56B4E9',  # Sky Blue
+    'CurrPPO': '#009E73',  # Bluish Green
+    'CurrQ': '#0072B2',    # Blue (shifted)
+    'PPO': '#D55E00',      # Vermillion (shifted)
+    'Q': '#CC79A7',        # Reddish Purple (shifted from next color in sequence)
+}
+
+# Tol Bright Palette
+COLORS_DICT_TOL_BRIGHT = {
+    'CurrMPI': '#4477AA',  # Blue
+    'CurrPMPO': '#66CCEE',  # Cyan
+    'CurrPPO': '#228833',  # Green
+    'CurrQ': '#CCBB44',    # Yellow
+    'PPO': '#EE6677',      # Red
+    'Q': '#AA3377',        # Purple
+}
+
+# Tol Muted Palette
+COLORS_DICT_TOL_MUTED = {
+    'CurrMPI': '#88CCEE',  # Light Blue
+    'CurrPMPO': '#CC6677',  # Light Red
+    'CurrPPO': '#DDCC77',  # Light Yellow
+    'CurrQ': '#117733',    # Dark Green
+    'PPO': '#332288',      # Dark Blue
+    'Q': '#AA4499',        # Purple
+}
+
+# Tol Light Palette
+COLORS_DICT_TOL_LIGHT = {
+    'CurrMPI': '#77AADD',  # Light Blue
+    'CurrPMPO': '#EE8866',  # Light Red
+    'CurrPPO': '#EEDD88',  # Light Yellow
+    'CurrQ': '#FFAABB',    # Pink
+    'PPO': '#99DDFF',      # Light Cyan
+    'Q': '#44BB99',        # Light Green
+}
