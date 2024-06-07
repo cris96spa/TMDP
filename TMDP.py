@@ -56,7 +56,6 @@ class TMDP(Env):
             s_prime = categorical_sample(self.xi, self.env.np_random)
             self.env.lastaction = a
             r = self.env.reward[int(self.env.s), a, int(s_prime)]
-            #self.env.lastreward = r
             self.env.s = s_prime
             done = self.env.is_terminal(self.env.s)
             if done:
@@ -72,7 +71,6 @@ class TMDP(Env):
         else:
             #print("Following regular probability transition function")
             s_prime, reward, flags, prob = self.env.step(a)
-            #prob["prob"] = prob["prob"]*(1-self.tau)
             flags["teleport"] = False
             reward = reward
             return s_prime, reward, flags, prob

@@ -199,7 +199,7 @@ class CurriculumMPI():
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {} tau {}".format(self.episode, r_sum, len(self.rewards),self.tmdp.tau))
+                    print("Episode: {} reward: {} tau {}".format(self.episode, r_sum,self.tmdp.tau))
                 if log_mlflow:
                     pass
 

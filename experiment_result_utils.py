@@ -112,12 +112,14 @@ def get_parent_artifacts(experiment_id):
         - temp (float): temperature value
     return (ndarray): the average reward collected over trajectories for each policy
 """
-def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5):    
+def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True):    
     returns = []
     tau = tmdp.tau
     
     for theta in thetas:
         pi = get_softmax_policy(theta, temperature=temp)
+        if deterministic:
+            pi = get_policy(pi)
         tmdp.reset()
         tmdp.update_tau(0.)
         episode = 0
@@ -139,6 +141,34 @@ def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5):
     tmdp.update_tau(tau)
     return returns
 
+def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True):    
+    returns = []
+    time_steps = []
+    tau = tmdp.tau
+    
+    for theta in thetas:
+        pi = get_softmax_policy(theta, temperature=temp)
+        if deterministic:
+            pi = get_policy(pi)
+        tmdp.reset()
+        tmdp.update_tau(0.)
+        episode = 0
+        cum_r = 0
+        done = False
+        while episode < episodes or done:
+            s = tmdp.env.s
+            a = select_action(pi[s])
+            s_prime, reward, flags, prob = tmdp.step(a)
+            cum_r += reward
+            if flags["done"]:
+                done = True
+                tmdp.reset()
+            episode += 1
+        returns.append(cum_r)
+        time_steps.append(episode)
+    
+    tmdp.update_tau(tau)
+    return returns, time_steps
 
 def test_Q_policies(tmdp:TMDP, Qs, episodes=100):    
     returns = []
@@ -209,4 +239,12 @@ def generate_M_labels(length, x):
 
     return labels
 
-
+def adjust_y_ticks(ax, y_value):
+    y_ticks = ax.get_yticks()
+    # Find the tick value closest to y_value and remove it
+    closest_tick = min(y_ticks, key=lambda x: abs(x - y_value))
+    new_y_ticks = list(y_ticks)
+    new_y_ticks.remove(closest_tick)
+    new_y_ticks.append(y_value)
+    new_y_ticks.sort()
+    return new_y_ticks

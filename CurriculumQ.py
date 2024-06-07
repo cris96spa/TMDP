@@ -146,7 +146,7 @@ class CurriculumQ():
                 self.taus.append(self.tmdp.tau)
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {}".format(self.episode, r_sum, len(self.rewards)))
+                    print("Episode: {} reward: {} tau {}".format(self.episode, r_sum, self.tmdp.tau))
 
                 if self.checkpoint:
                     #self.save_checkpoint(episode)

@@ -79,9 +79,8 @@ class CurriculumPMPO():
                  final_temp:float=0.02, episodes:int=5000,
                  epochs:int=10, eps_ppo:float=0.2, eps_shift:float=1e-3,
                  param_decay:bool=True, log_mlflow:bool=False,
-                 adaptive:bool=True, tuning_rate:float=0.80,
                  max_length:int=0, entropy_coef:float=0.1,
-                 debug:bool=False):
+                 debug:bool=False, max_eps_model:float=1.,):
         """
             Curriculum MPI training and sample loop
         """
@@ -96,7 +95,7 @@ class CurriculumPMPO():
         self.debug = debug                                                                  # debug flag
         self.d_inf_pol = 0                                                                  # discounted infinite policy advantage
         self.eps_shift = eps_shift                                                          # threshold for the overall policy shift
-        
+        self.max_eps_model = max_eps_model                                                  # maximum value for the model shift
         ####################################### Additional Counters #######################################
         
         # Tensorize the environment for PyTorch
@@ -162,7 +161,7 @@ class CurriculumPMPO():
                 self.taus.append(self.tmdp.tau)
                 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} length: {} tau {} d_inf_pol {}".format(self.episode, r_sum, len(self.rewards), self.tmdp.tau, self.d_inf_pol))
+                    print("Episode: {} reward: {} tau {} d_inf_pol {}".format(self.episode, r_sum, self.tmdp.tau, self.d_inf_pol))
                 if log_mlflow:
                     pass
 
@@ -277,16 +276,16 @@ class CurriculumPMPO():
         self.d_inf_pol = get_d_inf_policy(tensor_pi_ref, tensor_pi_old)
         self.theta = np.copy(self.theta_ref)                            # update the policy parameters with the reference policy parameters    
 
-    def update_model(self, eps_model:float=0.2, adaptive:bool=True, tuning_rate:float=0.95):
+    def update_model(self):
         """
             Update the model probability transition function
         """
         if self.tmdp.tau > 0:
-            self.eps_model = self.eps_shift - self.d_inf_pol
+            self.eps_model = min(self.eps_shift - self.d_inf_pol, self.max_eps_model)
             
             if self.eps_model > 0:
-                eps_model_dynamic = self.eps_model*self.tmdp.gamma/(1-self.tmdp.gamma)
-                tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, eps_model_dynamic)
+                gamma_eps_model = self.eps_model*self.tmdp.gamma/(1-self.tmdp.gamma)
+                tau_prime = compute_tau_prime(self.tmdp.gamma, self.tmdp.tau, gamma_eps_model)
                 if self.debug:
                     print("Eps model {}".format(self.eps_shift - self.d_inf_pol))
                     print("Updating the model from tau: {} to tau_prime: {}".format(round(self.tmdp.tau, 6), (round(tau_prime, 6))))

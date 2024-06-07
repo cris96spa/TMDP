@@ -1,4 +1,6 @@
-SEEDS = SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12715, 16404, 17710,
+MLFLOW_URI = 'http://192.168.0.182:12832'
+
+SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12715, 16404, 17710,
 17565, 18880, 21395, 46619, 9038, 20400, 59667, 60371, 2241, 22997, 54024, 13390,
 59161, 5783, 27666, 29823, 2243, 36837, 59216, 65465, 31734, 57679, 20482, 53408,
 32494, 11826, 24216, 49352, 19646, 12647, 47723, 10301, 12953, 52161, 30038, 33952,
@@ -56,7 +58,8 @@ MARKERS_DICT = {
     'CurrPPO': '^', 
     'CurrQ': '*', 
     'PPO': 'x', 
-    'Q': 'H'
+    'Q': 'H',
+    'Optimal': 'None'
 }
 LINE_STYLES_DICT = {
     'CurrMPI': 'dotted', 
@@ -64,16 +67,18 @@ LINE_STYLES_DICT = {
     'CurrPPO': 'dashdot', 
     'CurrQ': '--', 
     'PPO': 'dashed', 
-    'Q': '-.'
+    'Q': '-.',
+    'Optimal': ':'
 }
 
-COLORS_DICT = { # COLOR BLIND FRIENDLY
-    'CurrMPI': '#000000',  
-    'CurrPMPO': '#E69F00',  
-    'CurrPPO': '#56B4E9',  
-    'CurrQ': '#D55E00',    
-    'PPO': '#0072B2',      
-    'Q': '#009E73',        
+COLORS_DICT = { # Category 10
+    'CurrMPI': '#1F77B4', 
+    'CurrPMPO': '#FF7F0E',  
+    'CurrPPO': '#2CA02C',  
+    'CurrQ': '#D62728',    
+    'PPO': '#9467BD',      
+    'Q': '#8C564B',     
+    'Optimal': '#E377C2'      
 }
 
 MARKER_SIZE_DICT = {
@@ -82,7 +87,8 @@ MARKER_SIZE_DICT = {
     'CurrPPO': 7, 
     'CurrQ': 7, 
     'PPO': 6, 
-    'Q': 6
+    'Q': 6,
+    'Optimal': 6
 }
 
 MARKER_FREQUENCY_DICT = {
@@ -91,7 +97,8 @@ MARKER_FREQUENCY_DICT = {
     'CurrPPO': 2400, 
     'CurrQ': 2900, 
     'PPO': 3500, 
-    'Q': 3700
+    'Q': 3700,
+    'Optimal': 4000
 }
 
 MARKER_LOG_FREQUENCY_DICT = {
@@ -100,21 +107,11 @@ MARKER_LOG_FREQUENCY_DICT = {
     'CurrPPO': 0.33, 
     'CurrQ': 0.4, 
     'PPO': 0.50, 
-    'Q': 0.59
+    'Q': 0.59,
+    'Optimal': 0.68
 }
 
 
-MLFLOW_URI = 'http://192.168.0.182:12832'
-
-
-COLORS_DICT = { # Category 10
-    'CurrMPI': '#1F77B4', 
-    'CurrPMPO': '#FF7F0E',  
-    'CurrPPO': '#2CA02C',  
-    'CurrQ': '#D62728',    
-    'PPO': '#9467BD',      
-    'Q': '#8C564B',        
-}
 
 COLORS_DICT_DARK = { # COLOR BLIND FRIENDLY
     'CurrMPI': '#000000',  
