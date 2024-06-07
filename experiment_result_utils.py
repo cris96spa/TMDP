@@ -143,7 +143,7 @@ def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True
 
 def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True):    
     returns = []
-    time_steps = []
+    episode_lengths = []
     tau = tmdp.tau
     
     for theta in thetas:
@@ -155,7 +155,7 @@ def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=
         episode = 0
         cum_r = 0
         done = False
-        while episode < episodes or done:
+        while episode < episodes and not done:
             s = tmdp.env.s
             a = select_action(pi[s])
             s_prime, reward, flags, prob = tmdp.step(a)
@@ -165,10 +165,10 @@ def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=
                 tmdp.reset()
             episode += 1
         returns.append(cum_r)
-        time_steps.append(episode)
+        episode_lengths.append(episode)
     
     tmdp.update_tau(tau)
-    return returns, time_steps
+    return returns, episode_lengths
 
 def test_Q_policies(tmdp:TMDP, Qs, episodes=100):    
     returns = []
@@ -196,6 +196,34 @@ def test_Q_policies(tmdp:TMDP, Qs, episodes=100):
     
     tmdp.update_tau(tau)
     return returns
+
+def test_Q_policies_len(tmdp:TMDP, Qs, episodes=100):    
+    returns = []
+    episode_lengths = []
+    tau = tmdp.tau
+    
+    for Q in Qs:
+        pi = get_policy(Q)
+        tmdp.reset()
+        tmdp.update_tau(0.)
+        episode = 0
+        cum_r = 0
+        done = False
+        while episode < episodes and not done:
+            print(episode)
+            s = tmdp.env.s
+            a = select_action(pi[s])
+            s_prime, reward, flags, prob = tmdp.step(a)
+            cum_r += reward
+            if flags["done"]:
+                done = True
+                tmdp.reset()
+            episode += 1
+        returns.append(cum_r)
+        episode_lengths.append(episode)
+    
+    tmdp.update_tau(tau)
+    return returns, episode_lengths
 
 
 def get_artifacts_from_experiment(experiment_id):
