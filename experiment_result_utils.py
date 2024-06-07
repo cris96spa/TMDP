@@ -210,7 +210,6 @@ def test_Q_policies_len(tmdp:TMDP, Qs, episodes=100):
         cum_r = 0
         done = False
         while episode < episodes and not done:
-            print(episode)
             s = tmdp.env.s
             a = select_action(pi[s])
             s_prime, reward, flags, prob = tmdp.step(a)
