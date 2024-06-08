@@ -30,13 +30,16 @@ class TMDP(Env):
             tau (float, optional): teleport probability. Default to 0.
             gamma: discount factor. Default to 0.99
     """
-    def __init__(self, env:Env,  xi, tau=0., gamma=0.99, seed=None):
+    def __init__(self, env:Env,  
+                 xi, tau=0., gamma=0.99, 
+                 seed=None, discount_tau:bool=False):
         self.env = env
         #: xi (numpy.ndarray): state teleport probability distribution
         self.xi = xi
         self.gamma = gamma
         self.nS = env.nS
         self.nA = env.nA
+        self.discount_tau = discount_tau
         # Set the value of tau and build the P_tau and P_mat_tau
         self.update_tau(tau)
         self.reset()
@@ -56,6 +59,8 @@ class TMDP(Env):
             s_prime = categorical_sample(self.xi, self.env.np_random)
             self.env.lastaction = a
             r = self.env.reward[int(self.env.s), a, int(s_prime)]
+            if self.discount_tau:
+                r = r * self.tau
             self.env.s = s_prime
             done = self.env.is_terminal(self.env.s)
             if done:
@@ -72,7 +77,8 @@ class TMDP(Env):
             #print("Following regular probability transition function")
             s_prime, reward, flags, prob = self.env.step(a)
             flags["teleport"] = False
-            reward = reward
+            if self.discount_tau:
+                reward = reward * (1 - self.tau)
             return s_prime, reward, flags, prob
 
     """

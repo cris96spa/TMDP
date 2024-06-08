@@ -80,7 +80,8 @@ class CurriculumPMPO():
                  epochs:int=10, eps_ppo:float=0.2, eps_shift:float=1e-3,
                  param_decay:bool=True, log_mlflow:bool=False,
                  max_length:int=0, entropy_coef:float=0.1,
-                 debug:bool=False, max_eps_model:float=1.,):
+                 debug:bool=False, max_eps_model:float=1.,
+                 check_convergence:bool=False):
         """
             Curriculum MPI training and sample loop
         """
@@ -96,6 +97,7 @@ class CurriculumPMPO():
         self.d_inf_pol = 0                                                                  # discounted infinite policy advantage
         self.eps_shift = eps_shift                                                          # threshold for the overall policy shift
         self.max_eps_model = max_eps_model                                                  # maximum value for the model shift
+        self.check_convergence = check_convergence                                          # check convergence flag
         ####################################### Additional Counters #######################################
         
         # Tensorize the environment for PyTorch
@@ -103,7 +105,7 @@ class CurriculumPMPO():
         self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
 
         ################################################## Training and Sampling Loop ##################################################
-        while self.episode < self.episodes:                                                 # loop over episodes
+        while self.episode < self.episodes and not self.terminated:                                                 # loop over episodes
             
             s = self.tmdp.env.s                                                             # current state from the environment
             policy = softmax_policy(self.theta[s], temperature=temp+self.temp_decay)        # get softmax policy
@@ -159,9 +161,16 @@ class CurriculumPMPO():
                 self.Vs.append(np.copy(self.V))
                 self.thetas.append(np.copy(self.theta))
                 self.taus.append(self.tmdp.tau)
-                
+
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
                     print("Episode: {} reward: {} tau {} d_inf_pol {}".format(self.episode, r_sum, self.tmdp.tau, self.d_inf_pol))
+                
+                if self.check_convergence:
+                    if self.d_inf_pol < 1e-5 and self.tmdp.tau == 0:
+                        print("No further updates possible. Convergence reached.")
+                        self.terminated = True
+                        break
+                
                 if log_mlflow:
                     pass
 

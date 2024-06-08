@@ -58,7 +58,7 @@ MARKERS_DICT = {
     'CurrPPO': '^', 
     'CurrQ': '*', 
     'PPO': 'x', 
-    'Q': 'H',
+    'Q': 'o',
     'Optimal': 'None'
 }
 LINE_STYLES_DICT = {
@@ -81,13 +81,23 @@ COLORS_DICT = { # Category 10
     'Optimal': '#E377C2'      
 }
 
+COLORS_DICT_v2 = { # Category 10 edited
+    'CurrMPI': '#1F77B4', 
+    'CurrPMPO': 'darkorange',  
+    'CurrPPO': 'blue',  
+    'CurrQ': '#D62728',    
+    'PPO': '#9467BD',      
+    'Q': 'darkblue',     
+    'Optimal': '#E377C2'      
+}
+
 MARKER_SIZE_DICT = {
     'CurrMPI': 6, 
     'CurrPMPO': 6, 
     'CurrPPO': 7, 
-    'CurrQ': 7, 
+    'CurrQ': 8, 
     'PPO': 6, 
-    'Q': 6,
+    'Q': 5,
     'Optimal': 6
 }
 
@@ -102,12 +112,12 @@ MARKER_FREQUENCY_DICT = {
 }
 
 MARKER_LOG_FREQUENCY_DICT = {
-    'CurrMPI': 0.61, 
-    'CurrPMPO': 0.29, 
-    'CurrPPO': 0.33, 
-    'CurrQ': 0.4, 
-    'PPO': 0.50, 
-    'Q': 0.59,
+    'CurrMPI': 0.09, 
+    'CurrPMPO': 0.11, 
+    'CurrPPO': 0.18, 
+    'CurrQ': 0.13, 
+    'PPO': 0.24, 
+    'Q': 0.19,
     'Optimal': 0.68
 }
 
