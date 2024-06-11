@@ -59,7 +59,8 @@ MARKERS_DICT = {
     'CurrQ': '*', 
     'PPO': 'x', 
     'Q': 'o',
-    'Optimal': 'None'
+    'Optimal': 'None',
+    '2': 'None'
 }
 LINE_STYLES_DICT = {
     'CurrMPI': 'dotted', 
@@ -68,7 +69,8 @@ LINE_STYLES_DICT = {
     'CurrQ': '--', 
     'PPO': 'dashed', 
     'Q': '-.',
-    'Optimal': ':'
+    'Optimal': ':',
+    "2": 'solid'
 }
 
 COLORS_DICT = { # Category 10
@@ -78,7 +80,8 @@ COLORS_DICT = { # Category 10
     'CurrQ': '#D62728',    
     'PPO': '#9467BD',      
     'Q': '#8C564B',     
-    'Optimal': '#E377C2'      
+    'Optimal': '#E377C2',
+    '2': 'blue'       
 }
 
 COLORS_DICT_v2 = { # Category 10 edited
@@ -98,7 +101,8 @@ MARKER_SIZE_DICT = {
     'CurrQ': 8, 
     'PPO': 6, 
     'Q': 5,
-    'Optimal': 6
+    'Optimal': 6,
+    '2': 6   
 }
 
 MARKER_FREQUENCY_DICT = {
@@ -108,7 +112,8 @@ MARKER_FREQUENCY_DICT = {
     'CurrQ': 2900, 
     'PPO': 3500, 
     'Q': 3700,
-    'Optimal': 4000
+    'Optimal': 4000,
+    '2': 4000
 }
 
 MARKER_LOG_FREQUENCY_DICT = {
@@ -118,7 +123,8 @@ MARKER_LOG_FREQUENCY_DICT = {
     'CurrQ': 0.13, 
     'PPO': 0.24, 
     'Q': 0.19,
-    'Optimal': 0.68
+    'Optimal': 0.68,
+    '2': 0.68
 }
 
 
