@@ -4,6 +4,7 @@ import pygame
 from RiverSwim import RiverSwim
 from gymnasium.envs.toy_text.utils import categorical_sample
 from typing import List, Optional
+from gymnasium import Env, spaces, utils, logger
 
 """
     A Teleport-MDP (TMDP) is a Markovian decision process that follows (1 - tau) times the model dynamics,
@@ -19,7 +20,13 @@ from typing import List, Optional
 
     Args:
         DiscreteEnv (gym.ENV): Implementation of a discrete environment, from the gym.ENV class.
+
 """
+metadata = {
+        "render_modes": ["human", "ansi", "rgb_array"],
+        "render_fps": 4,
+    }
+
 class TMDP(Env):
     """
         Constructor
@@ -32,7 +39,10 @@ class TMDP(Env):
     """
     def __init__(self, env:Env,  
                  xi, tau=0., gamma=0.99, 
-                 seed=None, discount_tau:bool=False):
+                 seed=None, discount_tau:bool=True,
+                 render_mode: Optional[str] = None,):
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
         self.env = env
         #: xi (numpy.ndarray): state teleport probability distribution
         self.xi = xi
@@ -41,8 +51,11 @@ class TMDP(Env):
         self.nA = env.nA
         self.discount_tau = discount_tau
         # Set the value of tau and build the P_tau and P_mat_tau
+        self.seed(seed)
         self.update_tau(tau)
         self.reset()
+
+        self.render_mode = self.env.render_mode = render_mode
 
     """
         Basic step implementation. Allow to perform a single step in the environment.
@@ -79,7 +92,14 @@ class TMDP(Env):
             flags["teleport"] = False
             if self.discount_tau:
                 reward = reward * (1 - self.tau)
+
+            if self.render_mode == "human":
+                self.render()
+
             return s_prime, reward, flags, prob
+    
+    def render(self):
+        self.env.render()
 
     """
         Update the teleport probability tau
@@ -95,6 +115,11 @@ class TMDP(Env):
         else:
             P_mat_tau = (1 - self.tau) * self.env.P_mat #+ self.tau * self.xi[None, None, :]  # Broadcasting xi
         return P_mat_tau
+
+    def seed(self, seed=None):
+        # set a random generator
+        seed = self.env.seed(seed)
+        return [seed]
 
     def reset(
         self,

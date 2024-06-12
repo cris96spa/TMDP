@@ -143,7 +143,11 @@ class CurriculumPMPO():
                     print("Episode: {} reward: {} length: {} #teleports:{}".format(self.episode, r_sum, len(self.rewards),self.teleport_count))
                 e_time = time.time()                                                          
             
-                
+                if self.check_convergence:
+                    if self.d_inf_pol < 1e-6 and self.tmdp.tau == 0:
+                        print("No further updates possible. Policy convergence reached.")
+                        self.terminated = True
+                        break
                 ############################################# Decay Factors #############################################
                 self.lr_decay = max(1e-8, 1-(self.episode)/(self.episodes)) if param_decay else 1                # learning rate decay
                 self.temp_decay = (final_temp - temp)*(self.episode/self.episodes) if param_decay else 0         # temperature decay
@@ -164,12 +168,6 @@ class CurriculumPMPO():
 
                 if not debug and self.episode % (10*self.checkpoint_step) == 0:
                     print("Episode: {} reward: {} tau {} d_inf_pol {}".format(self.episode, r_sum, self.tmdp.tau, self.d_inf_pol))
-                
-                if self.check_convergence:
-                    if self.d_inf_pol < 1e-5 and self.tmdp.tau == 0:
-                        print("No further updates possible. Convergence reached.")
-                        self.terminated = True
-                        break
                 
                 if log_mlflow:
                     pass

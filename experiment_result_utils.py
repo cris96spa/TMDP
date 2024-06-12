@@ -275,3 +275,15 @@ def adjust_y_ticks(ax, y_value):
     new_y_ticks.append(y_value)
     new_y_ticks.sort()
     return new_y_ticks
+
+def pad_to_same_length(results):
+    # Find the maximum length of the lists
+    max_len = max(len(result) for result in results)
+    
+    # Pad each list to the maximum length
+    for result in results:
+        if len(result) < max_len:
+            last_element = result[-1]
+            result.extend([last_element] * (max_len - len(result)))
+    
+    return results
