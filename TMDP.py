@@ -51,7 +51,7 @@ class TMDP(Env):
         self.nA = env.nA
         self.discount_tau = discount_tau
         # Set the value of tau and build the P_tau and P_mat_tau
-        self.seed(seed)
+        #self.seed(seed)
         self.update_tau(tau)
         self.reset()
 
@@ -118,7 +118,7 @@ class TMDP(Env):
 
     def seed(self, seed=None):
         # set a random generator
-        seed = self.env.seed(seed)
+        #seed = self.env.seed(seed)
         return [seed]
 
     def reset(

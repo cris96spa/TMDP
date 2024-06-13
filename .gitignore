@@ -11,3 +11,4 @@ results
 .vscode
 strip_notebooks.py
 __pycache__
+experiments
