@@ -12,3 +12,6 @@ results
 strip_notebooks.py
 __pycache__
 experiments
+*_tensorboard
+*.zip
+disbanded

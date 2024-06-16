@@ -141,11 +141,14 @@ def test_policies(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True
     tmdp.update_tau(tau)
     return returns
 
-def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True):    
+def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=True, mu=None):    
     returns = []
     episode_lengths = []
     tau = tmdp.tau
-    
+    mu_train = tmdp.env.mu
+    # Set original mu if mu is not None
+    if mu is not None:
+        tmdp.env.mu = mu
     for theta in thetas:
         pi = get_softmax_policy(theta, temperature=temp)
         if deterministic:
@@ -168,6 +171,7 @@ def test_policies_len(tmdp:TMDP, thetas, episodes=100, temp=1e-5, deterministic=
         episode_lengths.append(episode)
     
     tmdp.update_tau(tau)
+    tmdp.env.mu = mu_train
     return returns, episode_lengths
 
 def test_Q_policies(tmdp:TMDP, Qs, episodes=100):    
@@ -197,11 +201,14 @@ def test_Q_policies(tmdp:TMDP, Qs, episodes=100):
     tmdp.update_tau(tau)
     return returns
 
-def test_Q_policies_len(tmdp:TMDP, Qs, episodes=100):    
+def test_Q_policies_len(tmdp:TMDP, Qs, episodes=100, mu=None):    
     returns = []
     episode_lengths = []
     tau = tmdp.tau
-    
+    mu_train = tmdp.env.mu
+    # Set original mu if mu is not None
+    if mu is not None:
+        tmdp.env.mu = mu
     for Q in Qs:
         pi = get_policy(Q)
         tmdp.reset()
@@ -222,6 +229,7 @@ def test_Q_policies_len(tmdp:TMDP, Qs, episodes=100):
         episode_lengths.append(episode)
     
     tmdp.update_tau(tau)
+    tmdp.env.mu = mu_train
     return returns, episode_lengths
 
 
