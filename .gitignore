@@ -3,7 +3,6 @@ mlartifacts
 mlflow_env
 env_mlflow
 mac_env
-mlruns
 results
 img
 models
@@ -15,3 +14,5 @@ experiments
 *_tensorboard
 *.zip
 disbanded
+overleaf_plots
+mlruns

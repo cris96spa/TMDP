@@ -16,11 +16,11 @@ from stable_baselines3.common.vec_env import VecEnv
 import time
 import sys
 
-class TeleportPMPO(PPO):
+class TeleportPPO(PPO):
     def __init__(self, *args, max_batches=None, 
                  **kwargs):
         
-        super(TeleportPMPO, self).__init__(*args, **kwargs)
+        super(TeleportPPO, self).__init__(*args, **kwargs)
         self.max_batches = max_batches
         self.total_timesteps_tracked = 0
         

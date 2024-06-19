@@ -295,3 +295,16 @@ def pad_to_same_length(results):
             result.extend([last_element] * (max_len - len(result)))
     
     return results
+
+
+def river_swim_uniform_curr_xi(tau, nS):
+    assert tau >= 0 and tau < 1, 'tau must be in [0, 1]'
+    low = int(np.floor((nS - 1) * tau))
+    if tau < 0.01:
+        low = 1
+    dim = (nS - 1) - low
+    xi = np.zeros(nS)
+    if dim > 0:
+        xi[low:nS-1] = 1.0 / dim
+    xi[-2] = 1.0 - sum(xi[:-2])
+    return xi

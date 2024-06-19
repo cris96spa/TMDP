@@ -19,6 +19,17 @@ SEEDS = [2999, 58864, 29859, 25025, 23110, 60779, 8649, 51036, 31886, 12715, 164
 1122, 50437, 40449, 21858, 53823, 22735, 65109, 45360]
 
 
+LABEL_DICT = {
+    'CurrMPI': 'TMPI',
+    'CurrPMPO': 'D-TPPO',
+    'CurrPPO': 'S-TPPO',
+    'CurrQ': 'S-TQ',
+    'PPO': 'PPO',
+    'Q': 'Q',
+    'Optimal': 'Optimal',
+    '2': 'Test'
+}
+
 LINE_STYLES= ['solid']#, 'dashed', 'dashdot', 'dotted', '-.', ':']
 
 COLORS = ['darkorange', 'green', 'red', 'c', 'blue', 'purple', 
@@ -117,12 +128,12 @@ MARKER_FREQUENCY_DICT = {
 }
 
 MARKER_LOG_FREQUENCY_DICT = {
-    'CurrMPI': 0.09, 
-    'CurrPMPO': 0.11, 
-    'CurrPPO': 0.18, 
-    'CurrQ': 0.13, 
-    'PPO': 0.24, 
-    'Q': 0.19,
+    'CurrMPI': 0.08, 
+    'CurrPMPO': 0.9, 
+    'CurrPPO': 0.21, 
+    'CurrQ': 0.11, 
+    'PPO': 0.17, 
+    'Q': 0.171,
     'Optimal': 0.68,
     '2': 0.68
 }

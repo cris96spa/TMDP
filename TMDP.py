@@ -40,7 +40,8 @@ class TMDP(Env):
     def __init__(self, env:Env,  
                  xi, tau=0., gamma=0.99, 
                  seed=None, discount_tau:bool=True,
-                 render_mode: Optional[str] = None,):
+                 render_mode: Optional[str] = None,
+                 xi_schedule=None):
         self.observation_space = env.observation_space
         self.action_space = env.action_space
         self.env = env
@@ -50,6 +51,7 @@ class TMDP(Env):
         self.nS = env.nS
         self.nA = env.nA
         self.discount_tau = discount_tau
+        self.xi_schedule = xi_schedule
         # Set the value of tau and build the P_tau and P_mat_tau
         #self.seed(seed)
         self.update_tau(tau)
@@ -71,13 +73,12 @@ class TMDP(Env):
             # Teleport branch
             s_prime = categorical_sample(self.xi, self.env.np_random)
             self.env.lastaction = a
-            r = self.env.reward[int(self.env.s), a, int(s_prime)]
+            #r = self.env.reward[int(self.env.s), a, int(s_prime)]
+            r = 0
             if self.discount_tau:
                 r = r * self.tau
             self.env.s = s_prime
             done = self.env.is_terminal(self.env.s)
-            if done:
-                s_prime, _ = self.env.reset()
 
             if self.env.render_mode == "human":
                 self.env.render()
@@ -108,6 +109,8 @@ class TMDP(Env):
     """
     def update_tau(self, tau):
         self.tau = tau
+        if self.xi_schedule is not None:
+            self.xi = self.xi_schedule(tau, self.nS)
 
     def compute_teleport_matrix(self):
         if self.tau == 0:

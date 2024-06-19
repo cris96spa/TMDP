@@ -88,7 +88,7 @@ class CurriculumMPI():
               check_convergence:bool=False, epochs:int=1,
               biased:bool=False, 
               param_decay:bool=True, log_mlflow:bool=False,
-              debug:bool=False):
+              debug:bool=False, original_mu=None):
         """
             Curriculum MPI training and sample loop
         """
@@ -103,13 +103,15 @@ class CurriculumMPI():
         stucked_count = 0                           # number of batches updates without improvement
         
         # Tensor conversion
-        self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
+        if original_mu is None:
+            original_mu = self.tmdp.env.mu
+        self.tensor_mu = torch.tensor(original_mu, dtype=torch.float32).to(self.device)
         self.tensor_P_mat = torch.tensor(self.tmdp.env.P_mat, dtype=torch.float32).to(self.device)
         self.tensor_xi = torch.tensor(self.tmdp.xi, dtype=torch.float32).to(self.device)
 
         # Pre-Compute the D_inf distance metric
         self.d_inf_model = get_d_inf_model(self.tmdp.env.P_mat, self.tmdp.xi)
-
+        r_sum = 0
         ################################################## Training and Sampling Loop ##################################################
         while self.episode < self.episodes:                                                 # loop over episodes
             
@@ -127,6 +129,22 @@ class CurriculumMPI():
                 print("Sampling loop is over. Done flag: {}, Terminated flag: {}".format(self.done, self.terminated))
                 # If terminated last trajectory is inconsistent, therefore is discarded (if done, instead, already added in the sample_step function)
                 
+            ############################################# Checkpointing #############################################                     
+            if self.episode % self.checkpoint_step == 0 or self.done or self.terminated:
+                self.Qs.append(np.copy(self.Q))
+                self.thetas.append(np.copy(self.theta))
+                self.taus.append(self.tmdp.tau)
+                if not debug and self.episode % min(100000, 10*self.checkpoint_step) == 0:
+                    print("Episode: {} reward: {} tau {} batch_len {} teleports {}".format(self.episode, sum(self.rewards),self.tmdp.tau, len(self.batch), self.teleport_count))
+                        
+                if log_mlflow:
+                    pass
+
+                if self.checkpoint:
+                    #self.save_checkpoint(episode)
+                    pass
+                if self.done or self.terminated:
+                    break
 
             # Batch processing
             if( (len(self.batch) != 0 and len(self.batch) % batch_size == 0) or self.done or self.terminated):
@@ -182,32 +200,15 @@ class CurriculumMPI():
                 self.rewards = []                                       # reset the rewards list
                 self.teleport_count = 0                                 # reset the teleport counter
                 self.t = 0                                              # reset the episode counter in the batch    
-
+                r_sum = 0                                               # reset the sum of rewards
                 ############################################# Convergence Check #############################################
                 if check_convergence and self.episode >= 0.25*self.episodes:
-                    if self.alpha_star == 0 and self.tmdp.tau <= 0.1:
+                    if self.alpha_star <= 0.1 and self.tmdp.tau <= 0.05:
                         stucked_count += 1
-                        self.biased = True
-                        self.episode += min(10000, int(self.episodes * 0.10))
-                        if stucked_count > 10:
+                        self.tmdp.tau*=0.99
+                        if stucked_count > 50:
                             self.terminated = True
                             break
-                            
-            ############################################# Checkpointing #############################################                     
-            if self.episode % self.checkpoint_step == 0 or self.done or self.terminated:
-                self.Qs.append(np.copy(self.Q))
-                self.thetas.append(np.copy(self.theta))
-                self.taus.append(self.tmdp.tau)
-                if not debug and self.episode % (10*self.checkpoint_step) == 0:
-                    print("Episode: {} reward: {} tau {}".format(self.episode, r_sum,self.tmdp.tau))
-                if log_mlflow:
-                    pass
-
-                if self.checkpoint:
-                    #self.save_checkpoint(episode)
-                    pass
-                if self.done or self.terminated:
-                    break
 
             if self.episode >= self.episodes: # Check Termination
                 break
@@ -226,7 +227,6 @@ class CurriculumMPI():
         sample = (s, a, r, s_prime, flags, self.t, self.k)          # sample tuple
         self.traj.append(sample)                                    # append sample to the trajectory           
         self.rewards.append(r)                                      # append reward to the rewards list   
-            
             
         if flags["done"]:                                           # if terminal state is reached                              
             self.tmdp.reset()                                       # reset the environment
@@ -261,7 +261,7 @@ class CurriculumMPI():
                             a_prime = traj[j+1][1]                          # get the next action     
                             td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a]) 
                                                                         
-                        if lam == 0 or not flags["done"]:
+                        if lam == 0: #or not flags["done"]:
                             self.Q[s,a] += td_error                         # update Q values of the visited state-action pair
                         else:
                             e[s,a] = 1                                      # frequency heuristic with saturation  
@@ -311,8 +311,9 @@ class CurriculumMPI():
         # Compute Delta U
         delta_U = get_sup_difference(tensor_U) 
         if delta_U == 0:
-            delta_U = (self.tmdp.env.reward_range[1]-self.tmdp.env.reward_range[0])/(1-self.tmdp.gamma)
+            delta_U = (1-self.tmdp.gamma**10)/(1-self.tmdp.gamma)
         self.delta_U = delta_U
+        
 
         # Compute Model Advantages
         if self.tmdp.tau > 0:
@@ -332,7 +333,7 @@ class CurriculumMPI():
         # Compute teleport bound candidate pairs
         pairs = get_teleport_bound_optimal_values(self.pol_adv, self.model_adv, self.delta_U,
                                                         self.d_inf_pol, self.d_exp_pol, self.d_inf_model,
-                                                        self.d_exp_model, self.tmdp.tau, self.tmdp.gamma,
+                                                        self.d_exp_model, self.tmdp.tau,self.tmdp.gamma,
                                                         biased=self.biased)
         teleport_bounds = []
         

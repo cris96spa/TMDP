@@ -103,7 +103,7 @@ class CurriculumPMPO():
         # Tensorize the environment for PyTorch
         # Tensor conversion
         self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
-
+        r_sum = 0
         ################################################## Training and Sampling Loop ##################################################
         while self.episode < self.episodes and not self.terminated:                                                 # loop over episodes
             

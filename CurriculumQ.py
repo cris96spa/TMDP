@@ -87,7 +87,7 @@ class CurriculumQ():
         
         # Tensor conversion
         self.tensor_mu = torch.tensor(self.tmdp.env.mu, dtype=torch.float32).to(self.device)
-
+        r_sum = 0
         ################################################## Training and Sampling Loop ##################################################
         while self.episode < self.episodes:                                                 # loop over episodes
             
