@@ -263,7 +263,6 @@ def plot_avg_test_return(returns, title, figsize=(10, 8)):
 
 def generate_M_labels(length, x):
     assert x >= 2, "Error: x must be >= than 2"
-
     labels = []
     for i in range(x):
         if i == 0:
@@ -272,6 +271,14 @@ def generate_M_labels(length, x):
             value = round(length/(x-i)/1_000_000, 2)
             labels.append(f"{value}M")
 
+    return labels
+
+def generate_uniform_labels(x_min, x_max):
+
+    step = 1_000_000 
+    num_labels = int(np.ceil((x_max - x_min) / step)) + 1
+    labels = [f"{i}M" for i in range(num_labels)]
+    labels[0] = '0'
     return labels
 
 def adjust_y_ticks(ax, y_value):

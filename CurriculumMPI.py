@@ -88,7 +88,8 @@ class CurriculumMPI():
               check_convergence:bool=False, epochs:int=1,
               biased:bool=False, 
               param_decay:bool=True, log_mlflow:bool=False,
-              debug:bool=False, original_mu=None):
+              debug:bool=False, original_mu=None,
+              max_length:int=0):
         """
             Curriculum MPI training and sample loop
         """
@@ -101,6 +102,7 @@ class CurriculumMPI():
         self.debug = debug                          # flag to print debug information
         ####################################### Additional Counters #######################################
         stucked_count = 0                           # number of batches updates without improvement
+        self.max_length = self.episodes if max_length == 0 else max_length                  # maximum length of a trajectory
         
         # Tensor conversion
         if original_mu is None:
@@ -226,9 +228,12 @@ class CurriculumMPI():
         self.t += 1                                                 # increment the episode in batch counter
         sample = (s, a, r, s_prime, flags, self.t, self.k)          # sample tuple
         self.traj.append(sample)                                    # append sample to the trajectory           
+        if len(self.traj) >= self.max_length:                       
+            flags["terminated"] = True
+            print("Trajectory length exceeded the maximum length, episode {}".format(self.episode))
         self.rewards.append(r)                                      # append reward to the rewards list   
             
-        if flags["done"]:                                           # if terminal state is reached                              
+        if flags["done"] or flags['terminated']:                                           # if terminal state is reached                              
             self.tmdp.reset()                                       # reset the environment
             self.batch.append(self.traj)                            # append the trajectory to the batch
             # reset current trajectory information
@@ -255,13 +260,14 @@ class CurriculumMPI():
                 
                     ##################################### Train Value Functions #####################################
                     if not flags["teleport"]:
-                        if flags["done"]:                                   # Terminal state reached
+                        if flags["done"] or flags["terminated"]:                                   # Terminal state reached
                             td_error = alpha_model*(r - self.Q[s, a])       # Consider only the reward
                         else:                                               # Regular state transition
-                            a_prime = traj[j+1][1]                          # get the next action     
+                            #a_prime = traj[j+1][1]                          # get the next action     
+                            a_prime = greedy(s_prime, self.Q, self.tmdp.env.allowed_actions[int(s_prime)])
                             td_error = alpha_model*(r + self.tmdp.gamma*self.Q[s_prime, a_prime]- self.Q[s, a]) 
                                                                         
-                        if lam == 0: #or not flags["done"]:
+                        if lam == 0 or not flags["done"] or not flags["terminated"]:
                             self.Q[s,a] += td_error                         # update Q values of the visited state-action pair
                         else:
                             e[s,a] = 1                                      # frequency heuristic with saturation  
@@ -273,7 +279,7 @@ class CurriculumMPI():
                                                     temperature=dec_temp) 
                         
                         Vf_s = np.matmul(ref_policy, self.Q[s])             # compute the value function
-                        A = self.Q[s,a] - Vf_s                              # compute advantage function
+                        A= self.Q[s,a] - Vf_s                              # compute advantage function
                         
                         ##################################### Compute U values #####################################
                         self.U[s,a,s_prime] += alpha_model*(r + self.tmdp.gamma*self.V[s_prime] - self.U[s,a,s_prime]) 

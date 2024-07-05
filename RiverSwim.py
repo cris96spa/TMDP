@@ -12,7 +12,6 @@ from os import path
 from typing import List, Optional
 import matplotlib.pyplot as plt
 
-
 def compute_expected_hitting_time(p):
     nS = p.shape[0]
     h = np.zeros(nS)
@@ -41,7 +40,8 @@ def compute_expected_hitting_time(p):
 
 
 
-def generate_river(nS:int=6, small:float=5e-5, large:float=1):
+
+def generate_river(nS:int=6, small:float=5e-3, large:float=1):
 
     nA = 2
     p = compute_probabilities(nS, nA)

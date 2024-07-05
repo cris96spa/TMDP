@@ -3,7 +3,6 @@ import subprocess
 
 # Directory containing the Jupyter notebooks
 directory = "."
-
 # Iterate over all files in the directory
 for filename in os.listdir(directory):
     if filename.endswith(".ipynb"):

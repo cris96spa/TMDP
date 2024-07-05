@@ -406,13 +406,13 @@ def compute_teleport_bound_1_tau_test(tau, policy_adv, model_adv, gamma, d_inf_m
     Compute the number of time steps to converge to the original model
 """
 def compute_n(gamma, tau, eps_model):
-    return np.ceil(2*gamma*tau/((1-gamma)*eps_model)) - 1
+    return np.ceil(2*gamma*tau/((1-gamma)*eps_model))
 
 """
     Compute the model step size to converge to the original model in n steps
 """
 def compute_eps_model(gamma, tau, n):
-    return 2*gamma*tau/((n+1)*(1-gamma))
+    return 2*gamma*tau/((n)*(1-gamma))
 
 def compute_tau_prime(gamma, tau, eps_model):
     tau_prime = tau - eps_model*(1 - gamma)/(2*gamma)

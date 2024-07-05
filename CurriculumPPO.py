@@ -224,7 +224,7 @@ class CurriculumPPO():
 
                     if not flags["teleport"]:                               # Following regular probability transitions function
                         ##################################### Train Value Functions #####################################
-                        if flags["done"]:                               # Terminal state reached or teleportation happened
+                        if flags["done"] or flags['terminated']:             # Terminal state reached or teleportation happened
                             td_error = alpha_model*(r - self.V[s])      # Consider only the reward
                         else:                                               # Regular state transition
                             td_error = alpha_model*(r + self.tmdp.gamma*self.V[s_prime]- self.V[s]) 
@@ -312,7 +312,7 @@ class CurriculumPPO():
                 s, a, r, s_prime, flags, t, k = traj[i]
                 
                 if not flags["teleport"]:
-                    if flags["done"]:                                   # Terminal state reached
+                    if flags["done"] or flags['terminated']:            # Terminal state reached
                         delta = r - self.V[s]                                
                         adv = last_adv = delta                          # Consider only the reward  
                     else:
