@@ -281,11 +281,13 @@ def generate_uniform_labels(x_min, x_max):
     labels[0] = '0'
     return labels
 
-def adjust_y_ticks(ax, y_value):
+def adjust_y_ticks(ax, y_value, remove_last=False):
     y_ticks = ax.get_yticks()
     # Find the tick value closest to y_value and remove it
     closest_tick = min(y_ticks, key=lambda x: abs(x - y_value))
     new_y_ticks = list(y_ticks)
+    if remove_last:
+        new_y_ticks.remove(new_y_ticks[-1])
     new_y_ticks.remove(closest_tick)
     new_y_ticks.append(y_value)
     new_y_ticks.sort()
