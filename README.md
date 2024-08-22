@@ -1,85 +1,76 @@
 """
 # TMDP: Teleport Markov Decision Process
 ![alt text](teleport_demo.gif)
-## Project Overview
+# Curriculum Learning through Teleportation: The Teleport MDP
 
-This repository contains the implementation of the Teleport Markov Decision Process (TMDP), a framework introduced as part of my thesis work titled **"Curriculum Reinforcement Learning through Teleportation: The Teleport MDP"**. This work is a significant contribution to the field of Deep Reinforcement Learning (DRL) and explores the concept of Curriculum Learning (CL) by introducing a novel approach for agent training.
+## Introduction
 
-The TMDP framework enhances the exploration capabilities of RL agents by incorporating a teleportation mechanism that allows an agent to be relocated to any state during an episode. This process helps the agent to overcome challenges associated with sparse rewards, high-dimensional spaces, and long-term credit assignment.
+Deep Reinforcement Learning (DRL) has revolutionized complex decision-making tasks, but still faces challenges in environments with sparse rewards, high-dimensional spaces, and long-term credit assignment issues. This project introduces the Teleport Markov Decision Processes (TMDPs) framework, which enhances the exploration capabilities of RL agents through a teleportation mechanism, contributing to more effective curriculum learning.
 
-The project includes both theoretical contributions and practical implementations, showcasing the effectiveness of TMDP-based curricula through empirical evaluation on well-known RL environments.
+## The Teleport MDP Framework
 
-## Table of Contents
+### What is a Teleport MDP?
 
-- [Project Overview](#project-overview)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
+A Teleport MDP extends the traditional Markov Decision Process (MDP) by adding a teleportation mechanism. It allows an agent to be relocated to any state during an episode, controlled by:
 
-## Installation
+- Teleport rate (τ): Determines the frequency of teleportation
+- State teleport probability distribution (ξ): Dictates the possible states for teleportation
 
-To set up the TMDP framework on your local machine, follow these steps:
+### How It Works
 
-1. **Clone the repository:**
+TMDPs start with a high teleport rate for wide exploration, gradually reducing it to increase task complexity and converge towards the original problem formulation.
 
-   \`\`\`bash
-   git clone https://github.com/cris96spa/TMDP.git
-   \`\`\`
+### Mathematical Formulation
 
-2. **Navigate to the project directory:**
+A TMDP is defined by the tuple M=⟨S,A,P,R,γ,μ,τ,ξ⟩, where:
 
-   \`\`\`bash
-   cd TMDP
-   \`\`\`
+- S: State space
+- A: Action space
+- P(s′∣s,a): Transition probability model
+- R(s,a): Reward function
+- γ: Discount factor
+- μ: Initial state distribution
+- τ: Teleport rate
+- ξ: Teleport probability distribution
 
-3. **Install the required dependencies:**
+The transition model in TMDP is defined as:
 
-   Ensure that you have Python 3.x installed. Then, install the necessary Python packages using pip:
+Pτ(s′∣s,a)=(1−τ)P(s′∣s,a)+τξ(s′)
 
-   \`\`\`bash
-   pip install -r requirements.txt
-   \`\`\`
+## Practical Algorithms
 
-## Usage
+We developed several algorithms integrating teleport-based curricula:
 
-After installation, you can experiment with the TMDP framework by running the provided scripts. The repository includes implementations of key algorithms such as:
+1. Teleport Model Policy Iteration (TMPI)
+2. Static Teleport (S-T)
+3. Dynamic Teleport (D-T)
 
-- **Teleport Model Policy Iteration (TMPI)**
-- **Static Teleport (S-T)**
-- **Dynamic Teleport (D-T)**
+## Experimental Evaluation
 
-These algorithms are designed to integrate teleportation-based curricula into standard RL training processes.
+We conducted experiments using two RL environments:
 
-## Project Structure
+1. Frozen Lake
+2. River Swim
 
-The repository is organized as follows:
+Results demonstrated that TMDP-based algorithms consistently outperformed their vanilla counterparts in both environments.
 
-- **src/**: Contains the core implementation of the TMDP framework and associated RL algorithms.
-- **configs/**: Includes configuration files for running experiments in various environments.
-- **data/**: Stores the results and logs of the experiments.
-- **docs/**: Contains project documentation and the executive summary of the thesis.
-- **tests/**: Includes unit tests for the implemented algorithms.
-- **run_experiment.py**: Script to launch experiments using the TMDP framework.
+## Conclusion
 
-## Contributing
+The Teleport MDP framework offers a flexible and effective approach to curriculum design in reinforcement learning, reducing reliance on domain-specific expertise and improving learning efficiency.
 
-Contributions to the TMDP project are welcome! If you would like to contribute, please follow these steps:
+## Co-Authors
 
-1. Fork the repository.
-2. Create a new branch (\`git checkout -b feature-branch\`).
-3. Make your changes and commit them (\`git commit -m 'Add some feature'\`).
-4. Push to the branch (\`git push origin feature-branch\`).
-5. Open a pull request.
+This research was conducted in collaboration with:
 
-Please ensure your code follows the style guidelines provided in the \`CONTRIBUTING.md\` file.
+- Prof. Marcello Restelli
+- Dr. Alberto Maria Metelli
+- Dr. Luca Sabbioni
 
-## License
+## References
 
-This project is licensed under the MIT License. See the \`LICENSE\` file for more details.
-
-## Acknowledgments
-
-This work was carried out as part of my thesis for the Laurea Magistrale in Computer Science and Engineering at Politecnico di Milano, under the supervision of Prof. Marcello Restelli and co-advisors Dott. Alberto Maria Metelli and Dott. Luca Sabbioni. I would like to thank my advisors for their invaluable guidance and support throughout the project.
+1. Andrychowicz, M., et al. (2017). Hindsight experience replay.
+2. Florensa, C., et al. (2017). Reverse curriculum generation for reinforcement learning.
+3. Kakade, S. M., & Langford, J. (2002). Approximately optimal approximate reinforcement learning.
+4. Metelli, A. M., et al. (2018). Configurable Markov decision processes.
+5. Schulman, J., et al. (2017). Proximal policy optimization algorithms.
+6. Bengio, Y., et al. (2009). Curriculum learning.
